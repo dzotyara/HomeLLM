@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" font-family="Segoe UI, Inter, system-ui, sans-serif">
+  <defs>
+    <pattern id="p" width="120" height="120" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="#5fd4a4" stroke-width="1.6" stroke-linejoin="round" opacity="0.07">
+        <path d="M18 34 30 24l12 10v12H18z"/><path d="M78 94l12-10 12 10v12H78z"/>
+        <circle cx="92" cy="30" r="5"/><circle cx="28" cy="92" r="3"/><path d="M60 58h8M64 54v8"/>
+      </g>
+    </pattern>
+    <linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#0f1413" stop-opacity="0"/><stop offset="1" stop-color="#0f1413" stop-opacity="0.85"/></linearGradient>
+    <symbol id="logo" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="8" fill="#141f1b"/>
+      <path d="M16 5.6 25.3 13.8V22a2.2 2.2 0 0 1-2.2 2.2H13.1L9.2 27.4l.4-3.2A2.2 2.2 0 0 1 6.7 22v-8.2z" fill="#5fd4a4"/>
+      <circle cx="12.3" cy="18.4" r="1.45" fill="#141f1b"/><circle cx="16" cy="18.4" r="1.45" fill="#141f1b"/><circle cx="19.7" cy="18.4" r="1.45" fill="#141f1b"/>
+    </symbol>
+  </defs>
+  <rect width="1280" height="320" rx="24" fill="#0f1413"/>
+  <rect width="1280" height="320" rx="24" fill="url(#p)"/>
+  <rect x="0.5" y="0.5" width="1279" height="319" rx="24" fill="none" stroke="#22302b"/>
+
+  <use href="#logo" x="72" y="84" width="152" height="152"/>
+  <text x="258" y="158" font-size="76" font-weight="700" fill="#e4ebe8">Home<tspan fill="#5fd4a4">LLM</tspan></text>
+  <text x="262" y="204" font-size="22" fill="#85968f">Локальный ИИ-помощник, который управляет компьютером</text>
+  <g font-size="18" fill="#5fd4a4">
+    <rect x="262" y="226" width="116" height="34" rx="17" fill="none" stroke="#2a4a3e"/><text x="285" y="249">офлайн</text>
+    <rect x="390" y="226" width="140" height="34" rx="17" fill="none" stroke="#2a4a3e"/><text x="412" y="249">бесплатно</text>
+    <rect x="542" y="226" width="140" height="34" rx="17" fill="none" stroke="#2a4a3e"/><text x="563" y="249">по-русски</text>
+  </g>
+
+  <g transform="translate(900 58)">
+    <rect width="330" height="204" rx="16" fill="#151d1a" stroke="#22302b"/>
+    <rect x="104" y="20" width="206" height="36" rx="12" fill="#1c2a25"/>
+    <text x="118" y="43" font-size="14" fill="#e4ebe8">включи что-нибудь из Кино</text>
+    <rect x="20" y="70" width="222" height="26" rx="13" fill="#121917" stroke="#2a4a3e"/>
+    <text x="34" y="88" font-size="13" fill="#5fd4a4" font-family="Cascadia Mono, Consolas, monospace">✓ play_music «Кино»</text>
+    <use href="#logo" x="20" y="112" width="30" height="30"/>
+    <rect x="60" y="110" width="250" height="36" rx="12" fill="#1a2421" stroke="#22302b"/>
+    <text x="72" y="133" font-size="14" fill="#e4ebe8">Включил «Кино» в Яндекс Музыке.</text>
+    <rect x="20" y="160" width="290" height="28" rx="10" fill="#0f1413" stroke="#22302b"/>
+    <text x="34" y="179" font-size="13" fill="#85968f">Напишите сообщение…</text>
+    <circle cx="294" cy="174" r="10" fill="#5fd4a4"/>
+  </g>
+</svg>

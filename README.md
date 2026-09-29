@@ -1,3 +1,16 @@
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="HomeLLM — локальный ИИ-помощник, который управляет компьютером" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-2024-5fd4a4?style=flat-square&logo=rust&logoColor=white&labelColor=141f1b" alt="Rust">
+  <img src="https://img.shields.io/badge/Tauri-2-5fd4a4?style=flat-square&logo=tauri&logoColor=white&labelColor=141f1b" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/llama.cpp-Vulkan%20%7C%20Metal%20%7C%20CUDA-5fd4a4?style=flat-square&labelColor=141f1b" alt="llama.cpp">
+  <img src="https://img.shields.io/badge/%D0%BC%D0%BE%D0%B4%D0%B5%D0%BB%D0%B5%D0%B9-35-5fd4a4?style=flat-square&labelColor=141f1b" alt="35 моделей">
+</p>
+
+<p align="center"><b><a href="docs/QUICKSTART.md">Как запустить</a></b> · <a href="#что-уже-работает">Что умеет</a> · <a href="#планы">Планы</a></p>
+
 # HomeLLM
 
 Локальный ИИ-помощник для компьютера. Выбираешь модель из каталога — она скачивается на ПК,
