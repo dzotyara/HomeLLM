@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -99,15 +99,25 @@ fn generate(
     n_ctx: u32,
     tokens: TokenSink,
 ) -> Result<String> {
-    // The chat template embedded in the GGUF (ChatML, Llama 3, Gemma...).
-    let template = model
-        .chat_template(None)
-        .map_err(|e| anyhow!("no chat template: {e}"))?;
+    // The chat template embedded in the GGUF (ChatML, Llama 3, Gemma...). llama.cpp only
+    // knows the templates it recognises (Gemma 4's gave "ffi error -1"): then build it by hand.
     let chat = messages
         .iter()
         .map(|m| LlamaChatMessage::new(m.role.clone(), m.content.clone()))
         .collect::<Result<Vec<_>, _>>()?;
-    let prompt = model.apply_chat_template(&template, &chat, true)?;
+    let prompt = match model
+        .chat_template(None)
+        .ok()
+        .and_then(|t| model.apply_chat_template(&t, &chat, true).ok())
+    {
+        Some(prompt) => prompt,
+        None => manual_prompt(
+            &model
+                .meta_val_str("general.architecture")
+                .unwrap_or_default(),
+            messages,
+        ),
+    };
     // The templates write BOS themselves where the model needs it.
     let prompt_tokens = model.str_to_token(&prompt, AddBos::Never)?;
     if prompt_tokens.len() + MAX_NEW_TOKENS > n_ctx as usize {
@@ -177,6 +187,94 @@ fn generate(
         *LAST_SPEED.lock().unwrap() = Some(generated as f32 / secs);
     }
     Ok(text)
+}
+
+/// A prompt for models whose template llama.cpp does not know: Gemma's turn format
+/// (no system role: the rules open the first user turn) or ChatML for the rest.
+fn manual_prompt(arch: &str, messages: &[Message]) -> String {
+    if arch.starts_with("gemma") {
+        let mut prompt = String::from("<bos>");
+        let mut system = String::new();
+        for m in messages {
+            match m.role.as_str() {
+                "system" => system = m.content.clone(),
+                "assistant" => prompt.push_str(&format!(
+                    "<start_of_turn>model
+{}<end_of_turn>
+",
+                    m.content
+                )),
+                _ => {
+                    let text = if system.is_empty() {
+                        m.content.clone()
+                    } else {
+                        format!(
+                            "{}
+
+{}",
+                            std::mem::take(&mut system),
+                            m.content
+                        )
+                    };
+                    prompt.push_str(&format!(
+                        "<start_of_turn>user
+{text}<end_of_turn>
+"
+                    ));
+                }
+            }
+        }
+        prompt
+            + "<start_of_turn>model
+"
+    } else {
+        let mut prompt: String = messages
+            .iter()
+            .map(|m| {
+                format!(
+                    "<|im_start|>{}
+{}<|im_end|>
+",
+                    m.role, m.content
+                )
+            })
+            .collect();
+        prompt.push_str(
+            "<|im_start|>assistant
+",
+        );
+        prompt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gemma_prompt_folds_the_system_rules_into_the_first_turn() {
+        let msgs = [
+            Message::new("system", "правила"),
+            Message::new("user", "привет"),
+            Message::new("assistant", "здравствуй"),
+        ];
+        let p = manual_prompt("gemma4", &msgs);
+        assert_eq!(
+            p,
+            "<bos><start_of_turn>user
+правила
+
+привет<end_of_turn>
+<start_of_turn>model
+здравствуй<end_of_turn>
+<start_of_turn>model
+"
+        );
+        assert!(manual_prompt("qwen3", &msgs).ends_with(
+            "<|im_start|>assistant
+"
+        ));
+    }
 }
 
 fn rand_seed() -> u32 {
