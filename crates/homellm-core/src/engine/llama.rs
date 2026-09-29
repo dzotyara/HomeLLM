@@ -121,7 +121,8 @@ fn generate(
         if model.is_eog_token(token) {
             break;
         }
-        let piece = model.token_to_piece(token, &mut decoder, false, None)?;
+        // Special tokens must be rendered: in Qwen3 `<tool_call>` and `<think>` are single special tokens.
+        let piece = model.token_to_piece(token, &mut decoder, true, None)?;
         text.push_str(&piece);
         if let Some(tx) = &tokens {
             let _ = tx.send(piece);

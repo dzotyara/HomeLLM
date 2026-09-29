@@ -125,7 +125,13 @@ fn parse_call(text: &str) -> Option<(String, Value)> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re =
         RE.get_or_init(|| Regex::new(r"(?s)<tool_call>\s*(\{.*?\})\s*(?:</tool_call>|$)").unwrap());
-    let call: Value = serde_json::from_str(re.captures(text)?.get(1)?.as_str()).ok()?;
+    // Small models sometimes drop the tags and answer with the bare JSON object.
+    let json = match re.captures(text) {
+        Some(caps) => caps.get(1)?.as_str(),
+        None if text.starts_with('{') && text.ends_with('}') => text,
+        None => return None,
+    };
+    let call: Value = serde_json::from_str(json).ok()?;
     let name = call["name"].as_str()?.to_string();
     let args = match &call["arguments"] {
         Value::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
@@ -144,6 +150,12 @@ mod tests {
         let (name, args) = parse_call(text).unwrap();
         assert_eq!(name, "media");
         assert_eq!(args["action"], "next");
+    }
+
+    #[test]
+    fn parses_a_bare_json_call() {
+        let (name, _) = parse_call("{\"name\": \"system_info\", \"arguments\": {}}").unwrap();
+        assert_eq!(name, "system_info");
     }
 
     #[test]
