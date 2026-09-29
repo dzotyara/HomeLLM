@@ -322,10 +322,10 @@ const downloading = new Map(); // id -> permille
 async function showModels() {
   const { models, dir } = await invoke("list_models");
   const current = await invoke("current");
-  $("models-dir").textContent = `Модели лежат в ${dir}`;
+  $("models-dir").textContent = `Модели лежат в ${dir}. Положите туда любой .gguf — он появится в «Своих моделях».`;
   const list = $("model-list");
   list.innerHTML = "";
-  const GROUPS = { chat: "Для разговора и управления ПК", code: "Для кода", voice: "Голос — заработает с голосовым режимом" };
+  const GROUPS = { local: "Свои модели — из папки моделей или по пути", chat: "Для разговора и управления ПК", code: "Для кода", voice: "Голос — заработает с голосовым режимом" };
   let group = null;
   for (const m of models.sort((a, b) => Object.keys(GROUPS).indexOf(a.kind) - Object.keys(GROUPS).indexOf(b.kind))) {
     if (m.kind !== group) {
@@ -348,6 +348,14 @@ async function showModels() {
       run.disabled = isCurrent;
       run.onclick = () => start(m, run);
       actions.append(run);
+      if (m.kind === "local" && !m.about.includes(dir)) {
+        const forget = el("button", "", "Убрать");
+        forget.onclick = async () => {
+          await invoke("forget_model", { id: m.id });
+          showModels();
+        };
+        actions.append(forget);
+      }
     } else if (downloading.has(m.id) || m.downloading) {
       const bar = el("progress");
       bar.id = `bar-${m.id}`;
@@ -401,6 +409,17 @@ listen("download-done", ({ payload }) => {
   if (payload.error) alert(`Не скачалось: ${payload.error}\nПопробуйте ещё раз — загрузка продолжится.`);
   if ($("models-dialog").open) showModels();
 });
+
+$("add-model").onclick = async () => {
+  try {
+    await invoke("add_model", { path: $("model-path").value });
+    $("model-path").value = "";
+    showModels();
+  } catch (e) {
+    alert(e);
+  }
+};
+$("open-dir").onclick = () => invoke("open_models_dir").catch((e) => alert(e));
 
 $("model-btn").onclick = () => {
   showModels();

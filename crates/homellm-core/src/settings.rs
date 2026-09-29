@@ -27,6 +27,9 @@ pub struct Settings {
     /// Downloads in progress: resumed when the app starts again.
     #[serde(default)]
     pub downloads: Vec<String>,
+    /// .gguf files added by path, anywhere on disk.
+    #[serde(default)]
+    pub custom_models: Vec<String>,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

@@ -85,6 +85,9 @@ aside {
 }
 .new-chat:hover { background: var(--accent-hover); }
 .chat-search { margin-top: 10px; padding: 7px 11px; font-size: 13px; background: var(--panel); }
+.add-model { display: flex; gap: 8px; margin-top: 12px; }
+.add-model input { flex: 1; min-width: 0; }
+.add-model button { padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); white-space: nowrap; }
 .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 8px 4px; }
 .chat-item {
   display: flex; align-items: center; gap: 4px;

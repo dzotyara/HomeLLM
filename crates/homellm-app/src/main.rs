@@ -92,7 +92,7 @@ impl ToolHost for AppTools {
         Some(match name {
             "list_models" => {
                 let hw = hardware::detect();
-                catalog::load()
+                catalog::all()
                     .iter()
                     .map(|m| {
                         let state = if m.is_downloaded() {
@@ -260,7 +260,7 @@ fn list_models(state: State<'_, App>) -> Value {
     let downloading = state.downloading.lock().unwrap().clone();
     let hw = hardware::detect();
     let recommended = catalog::recommend(&hw).map(|m| m.id);
-    let models: Vec<Value> = catalog::load()
+    let models: Vec<Value> = catalog::all()
         .into_iter()
         .map(|m| {
             let fit = catalog::fit(&m, &hw);
@@ -445,6 +445,33 @@ async fn delete_chat(state: State<'_, App>, id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Adds a .gguf file from anywhere on disk as the user's own model.
+#[tauri::command]
+fn add_model(path: String) -> Result<(), String> {
+    let path = path.trim().trim_matches('"').to_string();
+    if !std::path::Path::new(&path).is_file() || !path.to_lowercase().ends_with(".gguf") {
+        return Err("нужен путь к существующему файлу .gguf".into());
+    }
+    let mut s = settings::get();
+    if !s.custom_models.contains(&path) {
+        s.custom_models.push(path);
+    }
+    settings::save(s).map_err(err_text)
+}
+
+/// Forgets a model added by path (the file stays on disk).
+#[tauri::command]
+fn forget_model(id: String) -> Result<(), String> {
+    let mut s = settings::get();
+    s.custom_models.retain(|p| format!("local:{p}") != id);
+    settings::save(s).map_err(err_text)
+}
+
+#[tauri::command]
+fn open_models_dir() -> Result<(), String> {
+    catalog::open_models_dir().map_err(err_text)
+}
+
 /// Saves a chat as Markdown into Downloads and returns the file path.
 #[tauri::command]
 fn export_chat(state: State<'_, App>, id: u64) -> Result<String, String> {
@@ -525,6 +552,7 @@ fn save_settings(value: Settings) -> Result<(), String> {
     let saved = settings::get();
     s.last_model = saved.last_model;
     s.downloads = saved.downloads;
+    s.custom_models = saved.custom_models;
     settings::save(s).map_err(err_text)
 }
 
@@ -559,6 +587,9 @@ fn main() {
             rename_chat,
             delete_chat,
             export_chat,
+            add_model,
+            forget_model,
+            open_models_dir,
             answer,
             get_settings,
             save_settings
