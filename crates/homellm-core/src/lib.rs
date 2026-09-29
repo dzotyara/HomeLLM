@@ -7,15 +7,16 @@ pub mod catalog;
 pub mod download;
 pub mod engine;
 pub mod hardware;
+pub mod settings;
 pub mod tools;
 
 use std::path::PathBuf;
 
 /// Where downloaded models live: `%APPDATA%\HomeLLM\data\models` on Windows,
 /// `~/Library/Application Support/HomeLLM/models` on macOS, `~/.local/share/homellm/models` on Linux.
-/// `HOMELLM_MODELS_DIR` overrides it.
+/// `HOMELLM_MODELS_DIR` or the settings override it.
 pub fn models_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("HOMELLM_MODELS_DIR") {
+    if let Some(dir) = settings::value("HOMELLM_MODELS_DIR", |s| s.models_dir.clone()) {
         return PathBuf::from(dir);
     }
     directories::ProjectDirs::from("", "", "HomeLLM")

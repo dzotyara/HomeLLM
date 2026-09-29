@@ -10,8 +10,9 @@ path = "src/main.rs"
 
 [features]
 default = ["llama"]
-llama = ["homellm-core/llama"]
-cuda = ["homellm-core/cuda"]
+llama = ["homellm-core/llama", "llama-cpu"]
+llama-cpu = ["homellm-core/llama-cpu"]
+cuda = ["homellm-core/cuda", "llama-cpu"]
 
 [dependencies]
 anyhow.workspace = true

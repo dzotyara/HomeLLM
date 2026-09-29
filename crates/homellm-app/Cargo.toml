@@ -1,0 +1,23 @@
+[package]
+name = "homellm-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# GPU inference: Vulkan on Windows/Linux, Metal on macOS. `--no-default-features` = CPU only.
+default = ["gpu"]
+gpu = ["homellm-core/llama"]
+cuda = ["homellm-core/cuda"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+homellm-core = { path = "../homellm-core", default-features = false, features = ["llama-cpu"] }
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2.12", features = [] }
+tokio.workspace = true

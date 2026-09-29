@@ -174,28 +174,32 @@ async fn chat(
     }
 }
 
-#[cfg(feature = "llama")]
+#[cfg(feature = "llama-cpu")]
 fn local_engine(id: Option<String>) -> Result<(Box<dyn Engine>, String)> {
     use homellm_core::engine::llama::LlamaEngine;
     let model = match id {
         Some(id) => catalog::find(&id).ok_or_else(|| anyhow::anyhow!("нет модели {id}"))?,
-        None => catalog::load()
-            .into_iter()
-            .filter(|m| m.tools && m.is_downloaded())
-            .max_by_key(|m| m.size)
-            .ok_or_else(|| {
-                anyhow::anyhow!("нет скачанных моделей: `homellm hw`, потом `homellm pull <id>`")
-            })?,
+        None => catalog::default_local().ok_or_else(|| {
+            anyhow::anyhow!("нет скачанных моделей: `homellm hw`, потом `homellm pull <id>`")
+        })?,
     };
     if !model.is_downloaded() {
         bail!("модель не скачана: `homellm pull {}`", model.id);
     }
     println!("Загружаю {}…", model.name);
-    let engine = LlamaEngine::load(&model.path(), model.context)?;
+    let (engine, on_gpu) = LlamaEngine::load_entry(&model)?;
+    println!(
+        "{}",
+        if on_gpu {
+            "Считаю на видеокарте."
+        } else {
+            "Считаю на процессоре."
+        }
+    );
     Ok((Box::new(engine), model.system_suffix))
 }
 
-#[cfg(not(feature = "llama"))]
+#[cfg(not(feature = "llama-cpu"))]
 fn local_engine(_: Option<String>) -> Result<(Box<dyn Engine>, String)> {
     bail!("собрано без llama.cpp: используйте --server (Ollama, LM Studio)")
 }

@@ -44,6 +44,11 @@ impl Agent {
         }
     }
 
+    /// Starts a new conversation: keeps only the system prompt.
+    pub fn reset(&mut self) {
+        self.history.truncate(1);
+    }
+
     pub fn engine_name(&self) -> String {
         self.engine.name()
     }

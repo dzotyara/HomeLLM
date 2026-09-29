@@ -24,7 +24,7 @@ pub fn detect() -> Hardware {
         System::name().unwrap_or_default(),
         System::os_version().unwrap_or_default()
     );
-    let (gpu_name, vram_bytes) = match nvidia() {
+    let (gpu_name, vram_bytes) = match gpu() {
         Some((name, vram)) => (Some(name), Some(vram)),
         None if cfg!(all(target_os = "macos", target_arch = "aarch64")) => {
             (Some("Apple Silicon".into()), Some(ram_bytes * 7 / 10))
@@ -40,7 +40,15 @@ pub fn detect() -> Hardware {
     }
 }
 
-/// First NVIDIA card through `nvidia-smi`. AMD/Intel detection is a TODO (Vulkan).
+/// The biggest GPU llama.cpp can use (Vulkan/Metal/CUDA see any vendor), else NVIDIA via `nvidia-smi`.
+fn gpu() -> Option<(String, u64)> {
+    #[cfg(feature = "llama-cpu")]
+    if let Some(found) = crate::engine::llama::best_gpu() {
+        return Some(found);
+    }
+    nvidia()
+}
+
 fn nvidia() -> Option<(String, u64)> {
     let out = Command::new("nvidia-smi")
         .args([

@@ -23,6 +23,21 @@ fn backend() -> &'static LlamaBackend {
     BACKEND.get_or_init(|| LlamaBackend::init().expect("llama.cpp backend"))
 }
 
+/// The GPU with the most memory among llama.cpp's devices: (description, bytes).
+pub fn best_gpu() -> Option<(String, u64)> {
+    backend();
+    llama_cpp_2::list_llama_ggml_backend_devices()
+        .into_iter()
+        .filter(|d| !d.backend.eq_ignore_ascii_case("CPU") && d.memory_total > 0)
+        .max_by_key(|d| d.memory_total)
+        .map(|d| {
+            (
+                format!("{} ({})", d.description, d.backend),
+                d.memory_total as u64,
+            )
+        })
+}
+
 pub struct LlamaEngine {
     name: String,
     model: Arc<LlamaModel>,
@@ -31,8 +46,18 @@ pub struct LlamaEngine {
 
 impl LlamaEngine {
     /// Loads a GGUF file, offloading every layer to the GPU when the build has one.
-    pub fn load(path: &Path, n_ctx: u32) -> Result<Self> {
-        let params = LlamaModelParams::default().with_n_gpu_layers(999);
+    /// Loads a catalog model, on the GPU when it fits there. Returns whether it went to the GPU.
+    pub fn load_entry(model: &crate::catalog::ModelEntry) -> Result<(Self, bool)> {
+        let hw = crate::hardware::detect();
+        let on_gpu = crate::catalog::fit(model, &hw) == crate::catalog::Fit::Gpu;
+        Ok((Self::load(&model.path(), model.context, on_gpu)?, on_gpu))
+    }
+
+    /// `on_gpu`: offload every layer to the video card; pass `catalog::fit(..) == Fit::Gpu`,
+    /// since a model that does not fit in video memory fails to load there.
+    pub fn load(path: &Path, n_ctx: u32, on_gpu: bool) -> Result<Self> {
+        let layers = if on_gpu { 999 } else { 0 };
+        let params = LlamaModelParams::default().with_n_gpu_layers(layers);
         let model = LlamaModel::load_from_file(backend(), path, &params)
             .with_context(|| format!("failed to load {}", path.display()))?;
         Ok(Self {

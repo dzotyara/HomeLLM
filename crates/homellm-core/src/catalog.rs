@@ -76,6 +76,14 @@ pub fn find(id: &str) -> Option<ModelEntry> {
     load().into_iter().find(|m| m.id == id)
 }
 
+/// The biggest downloaded tool-capable model: what to start when the user named none.
+pub fn default_local() -> Option<ModelEntry> {
+    load()
+        .into_iter()
+        .filter(|m| m.tools && m.is_downloaded())
+        .max_by_key(|m| m.size)
+}
+
 /// The biggest tool-capable model that runs on the GPU, else the biggest that runs at all.
 pub fn recommend(hw: &Hardware) -> Option<ModelEntry> {
     let mut models: Vec<_> = load().into_iter().filter(|m| m.tools).collect();

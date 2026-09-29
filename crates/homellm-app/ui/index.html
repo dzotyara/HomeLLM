@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeLLM</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <div class="brand">HomeLLM</div>
+    <button class="tab active" data-tab="models">Модели</button>
+    <button class="tab" data-tab="chat">Чат</button>
+    <button class="tab" data-tab="settings">Настройки</button>
+    <div class="status" id="status">Модель не выбрана</div>
+  </nav>
+
+  <main>
+    <section id="models" class="page active">
+      <div class="card hw" id="hw">Смотрю железо…</div>
+      <div id="model-list"></div>
+      <p class="hint" id="models-dir"></p>
+    </section>
+
+    <section id="chat" class="page">
+      <div id="messages">
+        <div class="empty">Попросите, например: «включи что-нибудь из Кино», «сделай потише», «открой калькулятор».</div>
+      </div>
+      <form id="composer">
+        <input id="input" autocomplete="off" placeholder="Напишите сообщение…">
+        <button type="submit" id="send">Отправить</button>
+        <button type="button" id="new-chat" class="secondary" title="Начать заново">Новый</button>
+      </form>
+    </section>
+
+    <section id="settings" class="page">
+      <form id="settings-form" class="card">
+        <label>Папка с музыкой
+          <input name="music_dir" placeholder="например C:\Users\me\Music">
+          <small>Сначала ищу песню здесь, потом — на сайте ниже.</small>
+        </label>
+        <label>Сайт для поиска музыки
+          <input name="music_search" placeholder="https://music.yandex.ru/search?text=">
+        </label>
+        <label>Папка для моделей
+          <input name="models_dir" placeholder="по умолчанию — папка данных приложения">
+          <small>Уже скачанные модели сами не переедут.</small>
+        </label>
+        <button type="submit">Сохранить</button>
+        <span id="saved" class="hint"></span>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="confirm">
+    <form method="dialog">
+      <h3>Разрешить действие?</h3>
+      <p id="confirm-text"></p>
+      <div class="row">
+        <button value="no" class="secondary">Нет</button>
+        <button value="yes">Разрешить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

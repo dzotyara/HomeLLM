@@ -96,15 +96,15 @@ fn play_music(args: &Value) -> Result<String> {
         open::that_detached(&file)?;
         return Ok(format!("играет файл {}", file.display()));
     }
-    let search = std::env::var("HOMELLM_MUSIC_SEARCH")
-        .unwrap_or_else(|_| "https://music.yandex.ru/search?text=".into());
+    let search = crate::settings::value("HOMELLM_MUSIC_SEARCH", |s| s.music_search.clone())
+        .unwrap_or_else(|| "https://music.yandex.ru/search?text=".into());
     let url = format!("{search}{}", encode(query));
     open::that_detached(&url)?;
     Ok(format!("открыт поиск: {url}"))
 }
 
 fn find_local_track(query: &str) -> Option<std::path::PathBuf> {
-    let dir = std::env::var("HOMELLM_MUSIC_DIR").ok()?;
+    let dir = crate::settings::value("HOMELLM_MUSIC_DIR", |s| s.music_dir.clone())?;
     let query = query.to_lowercase();
     let mut stack = vec![std::path::PathBuf::from(dir)];
     while let Some(dir) = stack.pop() {

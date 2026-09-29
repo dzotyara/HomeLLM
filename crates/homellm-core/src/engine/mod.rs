@@ -1,7 +1,7 @@
 //! Inference engines. Built in: llama.cpp (`llama` feature). External: any
 //! OpenAI-compatible server — Ollama, LM Studio, llama-server.
 
-#[cfg(feature = "llama")]
+#[cfg(feature = "llama-cpu")]
 pub mod llama;
 pub mod openai;
 
