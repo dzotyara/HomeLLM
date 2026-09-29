@@ -40,6 +40,9 @@ pub struct ModelEntry {
     pub about: String,
     #[serde(default)]
     pub extra: Vec<ExtraFile>,
+    /// Checked in HomeLLM: loads, answers in Russian, calls tools.
+    #[serde(default)]
+    pub verified: bool,
     /// For the user's own models: the file itself (not in the catalog).
     #[serde(skip)]
     pub local_path: Option<PathBuf>,
@@ -225,6 +228,7 @@ fn local_entry(path: &std::path::Path) -> ModelEntry {
         system_suffix: String::new(),
         about: format!("Своя модель: {}", path.display()),
         extra: vec![],
+        verified: false,
         local_path: Some(path.to_path_buf()),
     }
 }

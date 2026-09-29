@@ -488,6 +488,7 @@ fn list_models(state: State<'_, App>) -> Value {
                 "fit": format!("{fit:?}"), "fit_label": fit.label(), "downloaded": m.is_downloaded(),
                 "speed": speeds.get(&m.id).map(|s| s.round()),
                 "new": catalog::is_new(&m.id),
+                "verified": m.verified,
                 "bytes": m.size, "partial": m.partial(), "downloading": downloading.contains(&m.id),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })

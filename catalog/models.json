@@ -11,7 +11,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "/no_think",
-    "about": "Самая лёгкая: слабые ПК и телефоны. Путает команды."
+    "about": "Самая лёгкая: слабые ПК и телефоны. Путает команды.",
+    "verified": true
   },
   {
     "id": "llama3.2-1b",
@@ -39,7 +40,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "",
-    "about": "Очень быстрая на процессоре, хороша для ноутбуков."
+    "about": "Очень быстрая на процессоре, хороша для ноутбуков.",
+    "verified": true
   },
   {
     "id": "llama3.2-3b",
@@ -95,7 +97,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "",
-    "about": "Новее Qwen3 4B, умнее при том же размере."
+    "about": "Новее Qwen3 4B, умнее при том же размере.",
+    "verified": true
   },
   {
     "id": "gemma3-4b",
