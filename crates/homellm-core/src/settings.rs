@@ -41,6 +41,9 @@ pub struct Settings {
     /// Measured speed per model id, tokens per second.
     #[serde(default)]
     pub speeds: HashMap<String, f32>,
+    /// Lets the model search the internet (off: HomeLLM is offline by default).
+    #[serde(default)]
+    pub web_search: bool,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

@@ -461,6 +461,7 @@ async function fillSettings() {
   form.elements.theme.value = THEMES.includes(s.theme) ? s.theme : "mint";
   form.elements.autostart.checked = !!s.autostart;
   form.elements.quit_on_close.checked = !!s.quit_on_close;
+  form.elements.web_search.checked = !!s.web_search;
   applyTheme(s.theme);
 }
 
@@ -482,6 +483,7 @@ form.addEventListener("submit", async (e) => {
     ...Object.fromEntries(new FormData(form)),
     autostart: form.elements.autostart.checked,
     quit_on_close: form.elements.quit_on_close.checked,
+    web_search: form.elements.web_search.checked,
     last_model: "",
     downloads: [],
     custom_models: [],

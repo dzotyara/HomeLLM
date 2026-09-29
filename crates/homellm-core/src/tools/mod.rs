@@ -2,6 +2,7 @@
 //! prompt and a risk level: anything above `Safe` needs the user's consent.
 
 mod pc;
+mod web;
 
 use anyhow::Result;
 use serde_json::Value;
@@ -24,7 +25,11 @@ pub struct Tool {
 }
 
 pub fn all() -> Vec<Tool> {
-    pc::tools()
+    let mut tools = pc::tools();
+    if crate::settings::get().web_search {
+        tools.extend(web::tools());
+    }
+    tools
 }
 
 pub fn find(name: &str) -> Option<Tool> {

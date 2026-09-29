@@ -31,6 +31,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true
 tokio.workspace = true
+ureq.workspace = true
 
 # llama-cpp-2 does not re-export the Vulkan switch: enable it on the sys crate directly.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
