@@ -8,6 +8,7 @@
 
 mod chats;
 mod reminders;
+mod scenarios;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -88,6 +89,14 @@ impl ToolHost for AppTools {
             json!({"name": "remind", "description": "Напомнить через N минут (системное уведомление). «Через час» = 60.",
                    "parameters": {"type": "object", "properties": {"minutes": {"type": "number"}, "text": {"type": "string"}},
                    "required": ["minutes", "text"]}}),
+            json!({"name": "save_scenario", "description": "Запомнить сценарий — несколько действий под одним именем. steps: [{\"tool\": имя инструмента, \"args\": {...}}].",
+                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "steps": {"type": "array", "items": {"type": "object"}}},
+                   "required": ["name", "steps"]}}),
+            json!({"name": "run_scenario", "description": "Выполнить сохранённый сценарий по имени («режим кино»).",
+                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}),
+            json!({"name": "list_scenarios", "description": "Какие сценарии сохранены.", "parameters": {"type": "object", "properties": {}}}),
+            json!({"name": "delete_scenario", "description": "Удалить сценарий по имени.",
+                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}),
             json!({"name": "list_reminders", "description": "Какие напоминания стоят.", "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "set_setting", "description": "Изменить настройку приложения. theme: mint (ночь и мята), lime (графит и лайм), violet (полночь и фиалка), amber (тёплый янтарь).",
                    "parameters": {"type": "object", "properties": {
@@ -172,6 +181,82 @@ impl ToolHost for AppTools {
                     None => "ошибка: нужно число минут".into(),
                 }
             }
+            "save_scenario" => {
+                let name = args["name"].as_str().unwrap_or_default().trim().to_string();
+                let steps: Vec<scenarios::Step> =
+                    serde_json::from_value(args["steps"].clone()).unwrap_or_default();
+                let unknown: Vec<&str> = steps
+                    .iter()
+                    .map(|s| s.tool.as_str())
+                    .filter(|t| homellm_core::tools::find(t).is_none() && !HOST_STEPS.contains(t))
+                    .collect();
+                if name.is_empty() || steps.is_empty() {
+                    "ошибка: нужны имя и хотя бы одно действие".into()
+                } else if !unknown.is_empty() {
+                    format!("ошибка: нет инструментов {}", unknown.join(", "))
+                } else {
+                    let count = steps.len();
+                    scenarios::save(scenarios::Scenario {
+                        name: name.clone(),
+                        steps,
+                    });
+                    format!("сценарий «{name}» сохранён: {count} действий")
+                }
+            }
+            "run_scenario" => match scenarios::find(args["name"].as_str().unwrap_or_default()) {
+                None => {
+                    let names: Vec<String> =
+                        scenarios::load().into_iter().map(|s| s.name).collect();
+                    format!(
+                        "нет такого сценария; есть: {}",
+                        if names.is_empty() {
+                            "никаких".into()
+                        } else {
+                            names.join(", ")
+                        }
+                    )
+                }
+                Some(scenario) => {
+                    let mut report = vec![];
+                    for step in &scenario.steps {
+                        report.push(format!("{}: {}", step.tool, self.run_step(step).await));
+                    }
+                    format!(
+                        "сценарий «{}» выполнен:\n{}",
+                        scenario.name,
+                        report.join("\n")
+                    )
+                }
+            },
+            "list_scenarios" => {
+                let all = scenarios::load();
+                if all.is_empty() {
+                    "сценариев нет".into()
+                } else {
+                    all.iter()
+                        .map(|s| {
+                            format!(
+                                "{}: {}",
+                                s.name,
+                                s.steps
+                                    .iter()
+                                    .map(|x| x.tool.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(" → ")
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
+            "delete_scenario" => {
+                let name = args["name"].as_str().unwrap_or_default();
+                if scenarios::delete(name) {
+                    format!("сценарий «{name}» удалён")
+                } else {
+                    "нет такого сценария".into()
+                }
+            }
             "list_reminders" => {
                 let all = reminders::load();
                 if all.is_empty() {
@@ -208,6 +293,31 @@ impl ToolHost for AppTools {
 
 /// Downloads a model; remembered in the settings until it finishes, so a download cut by
 /// closing the app resumes on the next start.
+/// App tools a scenario may include (not the ones that manage scenarios themselves).
+const HOST_STEPS: &[&str] = &["remind", "set_setting", "switch_model"];
+
+impl AppTools {
+    /// One scenario step: a PC tool (risky ones still ask) or one of `HOST_STEPS`.
+    async fn run_step(&self, step: &scenarios::Step) -> String {
+        if let Some(tool) = homellm_core::tools::find(&step.tool) {
+            if tool.risk != homellm_core::tools::Risk::Safe
+                && !(AskUser {
+                    app: self.app.clone(),
+                })
+                .confirm(&step.tool, &step.args)
+                .await
+            {
+                return "пользователь запретил".into();
+            }
+            return (tool.run)(&step.args).unwrap_or_else(|e| format!("ошибка: {e}"));
+        }
+        if HOST_STEPS.contains(&step.tool.as_str()) {
+            return self.call(&step.tool, &step.args).await.unwrap_or_default();
+        }
+        format!("нет инструмента {}", step.tool)
+    }
+}
+
 async fn pull_model(app: &AppHandle, id: &str) -> Result<(), String> {
     let model = catalog::find(id).ok_or("нет такой модели")?;
     let state = app.state::<App>();
