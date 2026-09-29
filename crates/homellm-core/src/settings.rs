@@ -44,6 +44,9 @@ pub struct Settings {
     /// Lets the model search the internet (off: HomeLLM is offline by default).
     #[serde(default)]
     pub web_search: bool,
+    /// Hides the desktop pet (shown by default).
+    #[serde(default)]
+    pub hide_pet: bool,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

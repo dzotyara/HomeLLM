@@ -799,6 +799,45 @@ fn toggle_main(app: &AppHandle) {
     }
 }
 
+/// The desktop pet: a small transparent window above the others, bottom right.
+fn set_pet(app: &AppHandle, on: bool) {
+    let existing = app.get_webview_window("pet");
+    if !on {
+        if let Some(window) = existing {
+            let _ = window.close();
+        }
+        return;
+    }
+    if existing.is_some() {
+        return;
+    }
+    let (x, y) = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| {
+            let size = m.size().to_logical::<f64>(m.scale_factor());
+            (size.width - 150.0, size.height - 190.0)
+        })
+        .unwrap_or((40.0, 40.0));
+    let _ = tauri::WebviewWindowBuilder::new(app, "pet", tauri::WebviewUrl::App("pet.html".into()))
+        .title("HomeLLM — питомец")
+        .inner_size(120.0, 120.0)
+        .position(x, y)
+        .transparent(true)
+        .decorations(false)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .build();
+}
+
+#[tauri::command]
+fn show_main_window(app: AppHandle) {
+    show_main(&app);
+}
+
 /// Keeps the Windows autostart entry in line with the setting.
 fn apply_autostart(app: &AppHandle, on: bool) {
     let launch = app.autolaunch();
@@ -854,6 +893,7 @@ fn save_settings(app: AppHandle, value: Settings) -> Result<(), String> {
     if value.autostart != settings::get().autostart {
         apply_autostart(&app, value.autostart);
     }
+    set_pet(&app, !value.hide_pet);
     let mut s = value;
     let saved = settings::get();
     s.last_model = saved.last_model;
@@ -887,6 +927,7 @@ fn main() {
         .on_window_event(|window, event| {
             // Closing hides into the tray: the model stays loaded and answers at once.
             if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main"
                 && !settings::get().quit_on_close
             {
                 let _ = window.hide();
@@ -903,6 +944,7 @@ fn main() {
                 }
             }
             apply_autostart(app.handle(), settings::get().autostart);
+            set_pet(app.handle(), !settings::get().hide_pet);
             // A fresher model catalog from GitHub, once a day; offline is fine.
             tauri::async_runtime::spawn(async {
                 if let Err(e) = catalog::refresh().await {
@@ -956,6 +998,7 @@ fn main() {
             export_chat,
             add_model,
             read_attachment,
+            show_main_window,
             forget_model,
             open_models_dir,
             answer,

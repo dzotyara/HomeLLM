@@ -517,6 +517,7 @@ async function fillSettings() {
   form.elements.autostart.checked = !!s.autostart;
   form.elements.quit_on_close.checked = !!s.quit_on_close;
   form.elements.web_search.checked = !!s.web_search;
+  form.elements.show_pet.checked = !s.hide_pet;
   applyTheme(s.theme);
 }
 
@@ -539,6 +540,7 @@ form.addEventListener("submit", async (e) => {
     autostart: form.elements.autostart.checked,
     quit_on_close: form.elements.quit_on_close.checked,
     web_search: form.elements.web_search.checked,
+    hide_pet: !form.elements.show_pet.checked,
     last_model: "",
     downloads: [],
     custom_models: [],
