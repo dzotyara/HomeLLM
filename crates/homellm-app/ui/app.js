@@ -182,8 +182,18 @@ listen("confirm", ({ payload }) => {
   }));
   dialog.oncancel = () => reply(false);
   dialog.onclose = () => reply(false);
+  confirmId = payload.id;
+  closeConfirm = () => {
+    answered = true;
+    if (dialog.open) dialog.close();
+  };
   dialog.showModal();
 });
+
+// Answered in the quick-ask bar: close ours without answering again.
+let confirmId = null;
+let closeConfirm = () => {};
+listen("confirm-done", ({ payload }) => payload.id === confirmId && closeConfirm());
 
 let attachments = []; // [{name, text}]
 

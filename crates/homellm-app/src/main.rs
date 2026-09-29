@@ -772,10 +772,12 @@ fn export_chat(state: State<'_, App>, id: u64) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn answer(state: State<'_, App>, id: u64, allow: bool) {
+fn answer(app: AppHandle, state: State<'_, App>, id: u64, allow: bool) {
     if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
         let _ = tx.send(allow);
     }
+    // Both windows may show the question: the other one closes it.
+    let _ = app.emit("confirm-done", json!({"id": id}));
 }
 
 /// Brings the main window up from the tray or from behind other windows.
@@ -787,16 +789,45 @@ fn show_main(app: &AppHandle) {
     }
 }
 
-/// The global hotkey: show the window, or hide it when it is already in front.
-fn toggle_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
-            let _ = window.hide();
-        } else {
-            show_main(app);
-            let _ = app.emit("focus-input", ());
-        }
+/// The global hotkey: the quick-ask bar above all windows, like Spotlight.
+fn toggle_quick(app: &AppHandle) {
+    let window = match app.get_webview_window("quick") {
+        Some(window) => window,
+        None => match tauri::WebviewWindowBuilder::new(
+            app,
+            "quick",
+            tauri::WebviewUrl::App("quick.html".into()),
+        )
+        .title("HomeLLM — быстрый вопрос")
+        .inner_size(680.0, 90.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .visible(false)
+        .build()
+        {
+            Ok(window) => window,
+            Err(_) => return show_main(app),
+        },
+    };
+    if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
+        let _ = window.hide();
+        return;
     }
+    // Upper third of the screen, centred.
+    if let Ok(Some(m)) = window.current_monitor() {
+        let size = m.size().to_logical::<f64>(m.scale_factor());
+        let _ = window.set_position(tauri::LogicalPosition::new(
+            (size.width - 680.0) / 2.0,
+            size.height * 0.22,
+        ));
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = app.emit_to("quick", "quick-open", ());
 }
 
 /// The desktop pet: a small transparent window above the others, bottom right.
@@ -918,7 +949,7 @@ fn main() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        toggle_main(app);
+                        toggle_quick(app);
                     }
                 })
                 .build(),

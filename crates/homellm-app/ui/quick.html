@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>HomeLLM — быстрый вопрос</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  html, body { background: transparent; height: auto; }
+  body { display: block; padding: 8px; }
+  .box { background: var(--panel); border: 1px solid var(--accent); border-radius: 16px; box-shadow: 0 12px 40px rgb(0 0 0 / .5); overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0; }
+  .row svg { width: 28px; height: 28px; flex: none; }
+  #q { flex: 1; font-size: 17px; border: 0; background: none; padding: 6px 0; outline: 0; }
+  #out { display: none; padding: 0 16px 12px 52px; max-height: 260px; overflow-y: auto; white-space: pre-wrap; color: var(--text); }
+  #out.shown { display: block; }
+  .act { color: var(--muted); font: 12px ui-monospace, Consolas, monospace; display: block; }
+  #ask { display: none; padding: 0 16px 12px 52px; gap: 8px; align-items: center; }
+  #ask.shown { display: flex; }
+  #ask span { flex: 1; font: 12.5px ui-monospace, Consolas, monospace; color: var(--warn); }
+  #ask button, #full { padding: 5px 12px; border-radius: 8px; border: 1px solid var(--line); }
+  #full { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <form class="row" id="form">
+    <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#141f1b"/><path d="M16 5.6 25.3 13.8V22a2.2 2.2 0 0 1-2.2 2.2H13.1L9.2 27.4l.4-3.2A2.2 2.2 0 0 1 6.7 22v-8.2z" fill="var(--accent)"/><circle cx="12.3" cy="18.4" r="1.45" fill="#141f1b"/><circle cx="16" cy="18.4" r="1.45" fill="#141f1b"/><circle cx="19.7" cy="18.4" r="1.45" fill="#141f1b"/></svg>
+    <input id="q" autocomplete="off" placeholder="Спросите или попросите — Enter, Esc чтобы скрыть">
+    <button type="button" id="full" title="Открыть полный чат">Чат ↗</button>
+  </form>
+  <div id="ask"><span id="ask-text"></span><button id="no">Нет</button><button id="yes" class="primary">Разрешить</button></div>
+  <div id="out"></div>
+</div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const win = window.__TAURI__.window.getCurrentWindow();
+  const $ = (id) => document.getElementById(id);
+  let raw = "";
+  let busy = false;
+  let pending = null;
+
+  async function fit() {
+    const h = Math.ceil(document.getElementById("box").getBoundingClientRect().height) + 16;
+    await win.setSize(new window.__TAURI__.dpi.LogicalSize(680, Math.min(h, 420)));
+  }
+
+  function visible(text) {
+    const shown = text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/<tool_call>[\s\S]*$/, "").replace(/<\/tool_call>/g, "").trim();
+    return shown.startsWith("{") ? "" : shown;
+  }
+
+  function show(text, extra = "") {
+    $("out").innerHTML = "";
+    if (extra) $("out").append(Object.assign(document.createElement("span"), { className: "act", textContent: extra }));
+    $("out").append(document.createTextNode(text));
+    $("out").classList.toggle("shown", !!(text || extra));
+    fit();
+  }
+
+  let actions = "";
+  listen("token", ({ payload }) => {
+    if (!busy) return;
+    raw += payload;
+    show(visible(raw) || "…", actions);
+  });
+  listen("tool", ({ payload }) => {
+    if (!busy) return;
+    raw = "";
+    actions += `→ ${payload.name}\n`;
+    show("…", actions);
+  });
+  listen("tool-result", ({ payload }) => {
+    if (!busy) return;
+    actions += `✓ ${payload.result.split("\n")[0]}\n`;
+    show("…", actions);
+  });
+  listen("confirm", ({ payload }) => {
+    if (!busy) return;
+    pending = payload.id;
+    $("ask-text").textContent = `${payload.tool} ${JSON.stringify(payload.args)}`;
+    $("ask").classList.add("shown");
+    fit();
+  });
+  listen("confirm-done", ({ payload }) => {
+    if (payload.id === pending) {
+      pending = null;
+      $("ask").classList.remove("shown");
+      fit();
+    }
+  });
+  const answer = (allow) => pending !== null && invoke("answer", { id: pending, allow });
+  $("yes").onclick = () => answer(true);
+  $("no").onclick = () => answer(false);
+
+  $("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = $("q").value.trim();
+    if (!text || busy) return;
+    busy = true;
+    raw = "";
+    actions = "";
+    show("…");
+    try {
+      show(await invoke("send", { text }), actions);
+      $("q").value = "";
+    } catch (err) {
+      show(String(err));
+    }
+    busy = false;
+  });
+
+  $("full").onclick = async () => {
+    await invoke("show_main_window");
+    win.hide();
+  };
+  document.addEventListener("keydown", (e) => e.key === "Escape" && win.hide());
+  listen("quick-open", () => {
+    $("q").focus();
+    $("q").select();
+  });
+  fit();
+</script>
+</body>
+</html>
