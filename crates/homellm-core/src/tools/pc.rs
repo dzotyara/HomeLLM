@@ -184,13 +184,17 @@ fn open_app(args: &Value) -> Result<String> {
     let status = std::process::Command::new("open")
         .args(["-a", name])
         .status();
+    // Linux has no launcher that reports a missing program: start it directly.
     #[cfg(all(unix, not(target_os = "macos")))]
-    let status = std::process::Command::new(name)
+    std::process::Command::new(name)
         .spawn()
-        .map(|_| Default::default());
-    let status = status.context("failed to start the program")?;
-    if !status.success() {
-        bail!("program {name} not found");
+        .with_context(|| format!("program {name} not found"))?;
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        let status = status.context("failed to start the program")?;
+        if !status.success() {
+            bail!("program {name} not found");
+        }
     }
     Ok(format!("запущено: {name}"))
 }
