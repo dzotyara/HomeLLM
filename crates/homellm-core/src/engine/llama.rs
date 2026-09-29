@@ -17,6 +17,14 @@ use super::{Engine, Message, TokenSink};
 
 const MAX_NEW_TOKENS: usize = 1024;
 const CHUNK: usize = 512;
+/// End-of-turn markers, in case the model does not report them as the end of generation.
+const END_MARKERS: &[&str] = &[
+    "<end_of_turn>",
+    "<|im_end|>",
+    "<|eot_id|>",
+    "<|end|>",
+    "<|endoftext|>",
+];
 
 /// Generation speed of the last answer, tokens per second.
 static LAST_SPEED: std::sync::Mutex<Option<f32>> = std::sync::Mutex::new(None);
@@ -28,6 +36,57 @@ pub fn last_speed() -> Option<f32> {
 fn backend() -> &'static LlamaBackend {
     static BACKEND: OnceLock<LlamaBackend> = OnceLock::new();
     BACKEND.get_or_init(|| LlamaBackend::init().expect("llama.cpp backend"))
+}
+
+/// Video memory for llama.cpp's compute buffers, on top of the weights and the KV cache.
+const GPU_COMPUTE: u64 = 900_000_000;
+
+/// How many layers go to the GPU, and the context size. Planned from free video memory
+/// up front: a failed allocation on Vulkan does not give its memory back, so trial and
+/// error only makes things worse. Full context if it fits, else half; then fewer layers.
+fn plan_gpu(path: &Path, n_ctx: u32) -> (u32, u32) {
+    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    let Some(free) = gpu_free() else {
+        return (999, n_ctx);
+    };
+    // Shapes from the metadata alone (no weights loaded).
+    let params = LlamaModelParams::default().with_vocab_only(true);
+    let meta = LlamaModel::load_from_file(backend(), path, &params).ok();
+    let num = |key: &str| -> Option<u64> {
+        let m = meta.as_ref()?;
+        let arch = m.meta_val_str("general.architecture").ok()?;
+        m.meta_val_str(&format!("{arch}.{key}")).ok()?.parse().ok()
+    };
+    let blocks = num("block_count").unwrap_or(40);
+    let heads = num("attention.head_count").unwrap_or(32);
+    let kv_heads = num("attention.head_count_kv").unwrap_or(heads);
+    let head_dim = num("attention.key_length")
+        .or_else(|| Some(num("embedding_length")? / heads))
+        .unwrap_or(128);
+    // K and V, f16, per token of context.
+    let kv_per_token = 2 * blocks * kv_heads * head_dim * 2;
+    let need = |ctx: u32, layers: u64| {
+        size * layers / blocks + kv_per_token * ctx as u64 * layers / blocks + GPU_COMPUTE
+    };
+    for ctx in [n_ctx, (n_ctx / 2).max(2048)] {
+        if need(ctx, blocks) <= free {
+            return (999, ctx);
+        }
+    }
+    let ctx = (n_ctx / 2).max(2048);
+    let per_layer = (size + kv_per_token * ctx as u64) / blocks;
+    let layers = free.saturating_sub(GPU_COMPUTE) / per_layer.max(1);
+    (layers.min(blocks) as u32, ctx)
+}
+
+/// Free memory of the biggest GPU llama.cpp can use.
+fn gpu_free() -> Option<u64> {
+    backend();
+    llama_cpp_2::list_llama_ggml_backend_devices()
+        .into_iter()
+        .filter(|d| !d.backend.eq_ignore_ascii_case("CPU") && d.memory_total > 0)
+        .max_by_key(|d| d.memory_total)
+        .map(|d| d.memory_free as u64)
 }
 
 /// The GPU with the most memory among llama.cpp's devices: (description, bytes).
@@ -63,17 +122,24 @@ impl LlamaEngine {
     /// `on_gpu`: offload every layer to the video card; pass `catalog::fit(..) == Fit::Gpu`,
     /// since a model that does not fit in video memory fails to load there.
     pub fn load(path: &Path, n_ctx: u32, on_gpu: bool) -> Result<Self> {
-        let layers = if on_gpu { 999 } else { 0 };
+        // Plan the split from free video memory up front: a failed context allocation on
+        // Vulkan does not give its memory back, so trial and error only makes things worse.
+        let (layers, n_ctx) = if on_gpu {
+            plan_gpu(path, n_ctx)
+        } else {
+            (0, n_ctx)
+        };
         let params = LlamaModelParams::default().with_n_gpu_layers(layers);
         let model = LlamaModel::load_from_file(backend(), path, &params)
             .with_context(|| format!("failed to load {}", path.display()))?;
+        let ctx_size = n_ctx.min(model.n_ctx_train());
         Ok(Self {
             name: path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned(),
-            n_ctx: n_ctx.min(model.n_ctx_train()),
+            n_ctx: ctx_size,
             model: Arc::new(model),
         })
     }
@@ -128,10 +194,15 @@ fn generate(
     }
 
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()) as i32;
+    // Weights may fit in video memory while the context does not (the desktop and other
+    // programs hold some): try smaller contexts that still fit the conversation.
+    // The size that fitted in video memory when the model was loaded (see `working_ctx`).
     let params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))
         .with_n_threads(threads);
-    let mut ctx = model.new_context(backend(), params)?;
+    let mut ctx = model.new_context(backend(), params).context(
+        "не хватает видеопамяти: закройте игры и тяжёлые программы или выберите модель поменьше",
+    )?;
 
     // Feed the prompt in chunks; logits only for its very last token.
     let mut batch = LlamaBatch::new(CHUNK, 1);
@@ -169,6 +240,11 @@ fn generate(
         // Special tokens must be rendered: in Qwen3 `<tool_call>` and `<think>` are single special tokens.
         let piece = model.token_to_piece(token, &mut decoder, true, None)?;
         text.push_str(&piece);
+        // Some GGUFs do not mark their end-of-turn token as the end: stop on it by text.
+        if let Some(at) = END_MARKERS.iter().find_map(|m| text.find(m)) {
+            text.truncate(at);
+            break;
+        }
         if let Some(tx) = &tokens {
             let _ = tx.send(piece);
         }

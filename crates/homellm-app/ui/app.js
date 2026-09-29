@@ -22,7 +22,7 @@ function icon(name, cls = "ico") {
 // ---------- tool-call markup ----------
 // Small models drop the <tool_call> tags, so a reply that starts as a JSON object is a call too.
 function stripThink(text) {
-  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/<\|channel>[\s\S]*?(<channel\|>|$)/g, "");
 }
 
 function visible(text) {

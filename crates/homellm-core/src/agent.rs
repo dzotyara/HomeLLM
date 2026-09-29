@@ -230,7 +230,8 @@ fn system_prompt(specs: &[Value]) -> String {
 
 fn strip_think(text: &str) -> String {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"(?s)<think>.*?</think>").unwrap());
+    let re =
+        RE.get_or_init(|| Regex::new(r"(?s)<think>.*?</think>|<\|channel>.*?<channel\|>").unwrap());
     re.replace_all(text, "").trim().to_string()
 }
 
@@ -320,6 +321,17 @@ mod tests {
     #[test]
     fn plain_text_is_an_answer() {
         assert!(parse_call("Привет! Чем помочь?").is_none());
+    }
+
+    #[test]
+    fn strips_gemma_thought_channel() {
+        assert_eq!(
+            strip_think(
+                "<|channel>thought
+<channel|>Я — HomeLLM."
+            ),
+            "Я — HomeLLM."
+        );
     }
 
     #[test]

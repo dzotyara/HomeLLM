@@ -46,7 +46,7 @@
   }
 
   function visible(text) {
-    const shown = text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/<tool_call>[\s\S]*$/, "").replace(/<\/tool_call>/g, "").trim();
+    const shown = text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/<\|channel>[\s\S]*?(<channel\|>|$)/g, "").replace(/<tool_call>[\s\S]*$/, "").replace(/<\/tool_call>/g, "").trim();
     return shown.startsWith("{") ? "" : shown;
   }
 

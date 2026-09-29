@@ -26,7 +26,8 @@
     "context": 8192,
     "tools": false,
     "system_suffix": "",
-    "about": "Крошечная и быстрая, только для простой болтовни."
+    "about": "Крошечная и быстрая, только для простой болтовни.",
+    "verified": true
   },
   {
     "id": "lfm2.5-2.6b",
@@ -53,9 +54,10 @@
     "size": 2019377696,
     "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
     "context": 8192,
-    "tools": true,
+    "tools": false,
     "system_suffix": "",
-    "about": "Быстрая, по-русски слабее Qwen."
+    "about": "Быстрая, по-русски слабее Qwen.",
+    "verified": true
   },
   {
     "id": "phi4-mini",
@@ -67,9 +69,10 @@
     "size": 2491874688,
     "sha256": "01999f17c39cc3074afae5e9c539bc82d45f2dd7faa3917c66cbef76fce8c0c2",
     "context": 8192,
-    "tools": true,
+    "tools": false,
     "system_suffix": "",
-    "about": "Сильна в логике и математике, по-русски средне."
+    "about": "Сильна в логике и математике, по-русски средне.",
+    "verified": true
   },
   {
     "id": "qwen3-4b",
@@ -83,7 +86,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "/no_think",
-    "about": "Проверенный баланс для ноутбуков."
+    "about": "Проверенный баланс для ноутбуков.",
+    "verified": true
   },
   {
     "id": "qwen3.5-4b",
@@ -110,9 +114,10 @@
     "size": 2489894016,
     "sha256": "04a43a22e8d2003deda5acc262f68ec1005fa76c735a9962a8c77042a74a7d19",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Хорошо говорит по-русски; инструменты нестабильны."
+    "about": "Хорошо говорит по-русски, справляется с управлением ПК.",
+    "verified": true
   },
   {
     "id": "gemma4-e4b",
@@ -126,7 +131,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "",
-    "about": "Новая Gemma: лёгкая, хорошо по-русски."
+    "about": "Новая Gemma: лёгкая, хорошо по-русски.",
+    "verified": true
   },
   {
     "id": "qwen3-8b",
@@ -140,7 +146,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "/no_think",
-    "about": "Надёжная для видеокарт от 8 ГБ."
+    "about": "Надёжная для видеокарт от 8 ГБ.",
+    "verified": true
   },
   {
     "id": "qwen3.5-9b",
@@ -154,7 +161,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "",
-    "about": "Рекомендуемая для видеокарт от 8 ГБ."
+    "about": "Рекомендуемая для видеокарт от 8 ГБ.",
+    "verified": true
   },
   {
     "id": "gemma4-12b",
@@ -168,7 +176,8 @@
     "context": 8192,
     "tools": true,
     "system_suffix": "",
-    "about": "Умная и отлично говорит по-русски; от 10 ГБ видеопамяти."
+    "about": "Умная, отлично по-русски. На 10 ГБ видеопамяти часть слоёв считает процессор.",
+    "verified": true
   },
   {
     "id": "qwen3-14b",
@@ -266,7 +275,8 @@
     "context": 8192,
     "tools": false,
     "system_suffix": "",
-    "about": "Для кода: автодополнение на слабых ПК."
+    "about": "Для кода: автодополнение на слабых ПК.",
+    "verified": true
   },
   {
     "id": "qwen2.5-coder-7b",
@@ -278,9 +288,10 @@
     "size": 4683074336,
     "sha256": "1664fccab734674a50763490a8c6931b70e3f2f8ec10031b54806d30e5f956b6",
     "context": 8192,
-    "tools": true,
+    "tools": false,
     "system_suffix": "",
-    "about": "Для кода: пишет и объясняет, от 8 ГБ видеопамяти."
+    "about": "Для кода: пишет и объясняет, от 8 ГБ видеопамяти.",
+    "verified": true
   },
   {
     "id": "qwen2.5-coder-14b",
@@ -406,9 +417,10 @@
     "size": 1312156768,
     "sha256": "f3c14cd9d6d314d22f22ec527914e1cb7b5a9043823d4e815c0d232a9cd16cf6",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Сторонняя сборка Jev на Qwen3.5 2B. Не проверена в HomeLLM."
+    "about": "Сторонняя сборка Jev на Qwen3.5 2B.",
+    "verified": true
   },
   {
     "id": "jev-style-qwen3.5-2b-v2",
@@ -420,23 +432,10 @@
     "size": 1274388384,
     "sha256": "c697d3b29d07fdd37b6ebeb5c98066f4c31632162adca6258db23f75184eb0c4",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Сторонняя сборка Jev, вторая версия. Не проверена в HomeLLM."
-  },
-  {
-    "id": "jev-style-0.8b-v3",
-    "kind": "chat",
-    "name": "Jev-Style 0.8B v3 (Q4_K_M)",
-    "params_b": 0.8,
-    "url": "https://huggingface.co/chaoliangUNSW/Jev-Style-0.8B-Decision-v3-GGUF/resolve/main/Jev-Style-0.8B-Decision-v3-Q4_K_M.gguf",
-    "file": "Jev-Style-0.8B-Decision-v3-Q4_K_M.gguf",
-    "size": 529296864,
-    "sha256": "0a19bc29bacc33e0d871146c8612b24dd14c2ed2e61cedeb7a928b0852628bac",
-    "context": 8192,
-    "tools": false,
-    "system_suffix": "",
-    "about": "Сторонняя сборка Jev, самая маленькая. Не проверена в HomeLLM."
+    "about": "Сторонняя сборка Jev, вторая версия.",
+    "verified": true
   },
   {
     "id": "jevk5",
@@ -448,9 +447,10 @@
     "size": 2708803936,
     "sha256": "d4289a6d760e662da3aac4bce9b7a06c1806b6cfbeb1ae31947421e3e257e433",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Сторонняя модель JevK5. Не проверена в HomeLLM."
+    "about": "Сторонняя модель JevK5.",
+    "verified": true
   },
   {
     "id": "jev-omni",
@@ -462,9 +462,10 @@
     "size": 7381382848,
     "sha256": "35bf51cb0dee2504e9f16093278ca853da2888251577236371630124605c40cd",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Сторонняя модель Jev-Omni. Не проверена в HomeLLM."
+    "about": "Сторонняя модель Jev-Omni.",
+    "verified": true
   },
   {
     "id": "jevify-gemma4-e4b",
@@ -476,9 +477,10 @@
     "size": 5302274848,
     "sha256": "f87b854db1d5a4567e8d50a3a968033abe337b75d0d8c36078d5822161b274af",
     "context": 8192,
-    "tools": false,
+    "tools": true,
     "system_suffix": "",
-    "about": "Сторонняя сборка jevify на Gemma 4 E4B. Не проверена в HomeLLM."
+    "about": "Сторонняя сборка jevify на Gemma 4 E4B.",
+    "verified": true
   },
   {
     "id": "jevify-gemma4-26b-a4b",
@@ -493,19 +495,5 @@
     "tools": false,
     "system_suffix": "",
     "about": "Сторонняя сборка jevify на Gemma 4 26B MoE. Не проверена в HomeLLM."
-  },
-  {
-    "id": "neohorse-jev-4b",
-    "kind": "chat",
-    "name": "NeoHorse Jev 4B (Q4_K_M)",
-    "params_b": 4.0,
-    "url": "https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B-GGUF/resolve/main/NeoHorse-Jev-4B-Q4_K_M.gguf",
-    "file": "NeoHorse-Jev-4B-Q4_K_M.gguf",
-    "size": 3394729184,
-    "sha256": "d2d81e946be2f44954f7183572abe66558a5d3d7510cc710c874f7e90f5edce7",
-    "context": 8192,
-    "tools": false,
-    "system_suffix": "",
-    "about": "Сторонняя сборка NeoHorse Jev. Не проверена в HomeLLM."
   }
 ]

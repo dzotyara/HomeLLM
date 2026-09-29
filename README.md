@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Rust-2024-5fd4a4?style=flat-square&logo=rust&logoColor=white&labelColor=141f1b" alt="Rust">
   <img src="https://img.shields.io/badge/Tauri-2-5fd4a4?style=flat-square&logo=tauri&logoColor=white&labelColor=141f1b" alt="Tauri 2">
   <img src="https://img.shields.io/badge/llama.cpp-Vulkan%20%7C%20Metal%20%7C%20CUDA-5fd4a4?style=flat-square&labelColor=141f1b" alt="llama.cpp">
-  <img src="https://img.shields.io/badge/%D0%BC%D0%BE%D0%B4%D0%B5%D0%BB%D0%B5%D0%B9-35-5fd4a4?style=flat-square&labelColor=141f1b" alt="35 моделей">
+  <img src="https://img.shields.io/badge/%D0%BC%D0%BE%D0%B4%D0%B5%D0%BB%D0%B5%D0%B9-33-5fd4a4?style=flat-square&labelColor=141f1b" alt="33 модели">
 </p>
 
 <p align="center"><b><a href="docs/QUICKSTART.md">Как запустить</a></b> · <a href="#что-уже-работает">Что умеет</a> · <a href="#планы">Планы</a></p>
@@ -37,11 +37,11 @@ HomeLLM собирает это в одно приложение для обыч
 
 - **Окно**: вкладки «Модели» (железо, каталог, загрузка с прогрессом, запуск), «Чат» (ответ по мере
   генерации, видно, какие действия выполняются) и «Настройки»; рискованные действия — через диалог.
-- **Каталог моделей** (`catalog/models.json`, 35 штук, все бесплатные): для разговора — Qwen3/3.5/3.6/3.8,
+- **Каталог моделей** (`catalog/models.json`, 33 штуки, все бесплатные; 19 проверены на RTX 3080 и отмечены «✓ проверена»): для разговора — Qwen3/3.5/3.6/3.8,
   Gemma 3/4, Llama 3.2, LFM 2.5, Phi-4 mini, Mistral Small 3.2, gpt-oss 20B; для кода — Qwen2.5 Coder и
-  Qwen3 Coder 30B; сторонние сборки Jev (Jev-Style, JevK5, Jev-Omni, jevify Gemma 4, NeoHorse Jev);
+  Qwen3 Coder 30B; сторонние сборки Jev (Jev-Style, JevK5, Jev-Omni, jevify Gemma 4);
   для голоса — Whisper (распознавание) и русские голоса Piper (озвучка, заработают вместе с голосовым
-  режимом). Вживую проверены не все — список проверенных будет в каталоге.
+  режимом).
 - **Питомец**: домик-пузырь в углу экрана поверх окон — думает, пока модель пишет, радуется выполненному, засыпает без дела; двойной клик открывает HomeLLM, перетаскивается мышью, выключается в настройках.
 - **Всегда под рукой**: значок в трее (открыть, новый чат, выход), закрытие окна прячет его в трей — модель остаётся загруженной; **Alt+Space** в любой программе открывает строку быстрого вопроса поверх всех окон (как Spotlight): Enter — спросить, Esc — спрятать; опция «запускать вместе с Windows».
 - **Файлы в чат**: перетащите в окно текст, код, CSV или PDF — модель перескажет или ответит по содержанию (до ~6000 символов на файл).
@@ -156,7 +156,6 @@ crates/homellm-cli         консольная оболочка
 Весь план — в Linear (эпики «v0.1 Snapshot» и «v0.2: ништяки»). Ближайшее:
 
 1. **Голос**: распознавание через whisper.cpp, озвучка через Piper, фраза для активации — всё офлайн (модели уже в каталоге).
-2. **Проверка новых моделей** каталога (Qwen 3.5+, Gemma 4, gpt-oss…) на нашей сборке llama.cpp.
 4. **Видит экран**: скриншот + модель со зрением.
 5. **Установщики** (msi/dmg/AppImage) в GitHub Releases, сборки под macOS и Linux.
 6. **Музыка по API** (Spotify, Яндекс Музыка), поиск по своим файлам.
