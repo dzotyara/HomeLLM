@@ -55,6 +55,9 @@ HomeLLM собирает это в одно приложение для обыч
 
 ## Сборка
 
+Пошаговая инструкция с нуля для Windows: [docs/QUICKSTART.md](docs/QUICKSTART.md).
+
+
 Нужны Rust (stable), CMake, компилятор C++ (Windows: Visual Studio Build Tools с C++, macOS: Xcode CLT),
 LLVM (libclang нужен для привязок к llama.cpp) и, на Windows и Linux, [Vulkan SDK](https://vulkan.lunarg.com/)
 с переменной `VULKAN_SDK`.
