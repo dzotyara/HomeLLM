@@ -11,7 +11,7 @@ pub fn tools() -> Vec<Tool> {
     vec![
         Tool {
             name: "media",
-            description: "Управление воспроизведением и громкостью системы.",
+            description: "Пауза/продолжить, следующий/предыдущий трек, звук громче/тише на шаг, выключить звук. «Прибавь», «убавь», «потише» — это volume_up/volume_down.",
             parameters: || {
                 json!({"type": "object", "properties": {"action": {"type": "string",
                     "enum": ["play_pause", "next", "previous", "volume_up", "volume_down", "mute"]}},
@@ -43,7 +43,7 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "set_volume",
-            description: "Выставить громкость системы в процентах (0–100).",
+            description: "Выставить точную громкость, ТОЛЬКО когда пользователь назвал число процентов («громкость 30%»). Для «прибавь/убавь» используй media.",
             parameters: || {
                 json!({"type": "object", "properties": {"percent": {"type": "integer", "minimum": 0, "maximum": 100}},
                     "required": ["percent"]})

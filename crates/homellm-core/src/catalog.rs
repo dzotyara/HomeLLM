@@ -123,3 +123,62 @@ pub fn recommend(hw: &Hardware) -> Option<ModelEntry> {
     let pick = |want: Fit| models.iter().find(|m| fit(m, hw) == want).cloned();
     pick(Fit::Gpu).or_else(|| pick(Fit::Cpu))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_entries_are_complete_and_unique() {
+        let models = load();
+        let mut ids = std::collections::HashSet::new();
+        for m in &models {
+            assert!(ids.insert(m.id.clone()), "duplicate id {}", m.id);
+            assert!(
+                ["chat", "code", "voice"].contains(&m.kind.as_str()),
+                "{}: kind {}",
+                m.id,
+                m.kind
+            );
+            assert!(
+                m.url.starts_with("https://huggingface.co/"),
+                "{}: url",
+                m.id
+            );
+            assert!(
+                m.url.ends_with(&m.file),
+                "{}: url does not end with the file name",
+                m.id
+            );
+            assert!(m.size > 0, "{}: size", m.id);
+            let hex = |h: &str| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit());
+            assert!(hex(&m.sha256), "{}: sha256", m.id);
+            assert!(
+                m.extra
+                    .iter()
+                    .all(|e| e.size > 0 && e.url.ends_with(&e.file)),
+                "{}: extra",
+                m.id
+            );
+        }
+        assert!(models.len() >= 30);
+    }
+
+    #[test]
+    fn recommends_by_parameters_not_file_size() {
+        let hw = Hardware {
+            os: String::new(),
+            cpu_threads: 8,
+            ram_bytes: 32 << 30,
+            gpu_name: None,
+            vram_bytes: Some(10 << 30),
+        };
+        assert_eq!(recommend(&hw).unwrap().id, "gemma4-12b");
+        let cpu_only = Hardware {
+            vram_bytes: None,
+            ram_bytes: 8 << 30,
+            ..hw
+        };
+        assert!(recommend(&cpu_only).unwrap().size < 5 << 30);
+    }
+}

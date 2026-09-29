@@ -257,4 +257,175 @@ mod tests {
     fn strips_thinking() {
         assert_eq!(strip_think("<think>\nhmm\n</think>\n\nОк"), "Ок");
     }
+
+    /// A model that answers from a script and records what it was shown.
+    struct Scripted {
+        replies: std::sync::Mutex<Vec<&'static str>>,
+        seen: std::sync::Mutex<Vec<Vec<Message>>>,
+    }
+
+    impl Scripted {
+        fn new(replies: &[&'static str]) -> Self {
+            Self {
+                replies: std::sync::Mutex::new(replies.iter().rev().copied().collect()),
+                seen: Default::default(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Engine for Scripted {
+        fn name(&self) -> String {
+            "scripted".into()
+        }
+        async fn complete(&self, messages: &[Message], _: TokenSink) -> Result<String> {
+            self.seen.lock().unwrap().push(messages.to_vec());
+            Ok(self
+                .replies
+                .lock()
+                .unwrap()
+                .pop()
+                .unwrap_or("конец")
+                .to_string())
+        }
+    }
+
+    struct Answer(bool);
+
+    #[async_trait]
+    impl Confirm for Answer {
+        async fn confirm(&self, _: &str, _: &Value) -> bool {
+            self.0
+        }
+    }
+
+    struct Host;
+
+    #[async_trait]
+    impl ToolHost for Host {
+        fn specs(&self) -> Vec<Value> {
+            vec![
+                serde_json::json!({"name": "list_models", "description": "каталог", "parameters": {}}),
+            ]
+        }
+        async fn call(&self, name: &str, _: &Value) -> Option<String> {
+            (name == "list_models").then(|| "qwen3-8b".to_string())
+        }
+    }
+
+    async fn run(
+        replies: &[&'static str],
+        allow: bool,
+        text: &str,
+    ) -> (Agent, String, Vec<String>) {
+        let mut agent =
+            Agent::with_host(Box::new(Scripted::new(replies)), "", Some(Arc::new(Host)));
+        let mut events = vec![];
+        let answer = agent
+            .send(text, &Answer(allow), None, |e| match e {
+                Event::ToolCall { name, .. } => events.push(format!("call {name}")),
+                Event::ToolResult { result, .. } => events.push(format!("result {result}")),
+            })
+            .await
+            .unwrap();
+        (agent, answer, events)
+    }
+
+    #[tokio::test]
+    async fn runs_a_tool_and_answers() {
+        let (agent, answer, events) = run(
+            &[
+                "<tool_call>{\"name\": \"system_info\", \"arguments\": {}}</tool_call>",
+                "Память в порядке.",
+            ],
+            true,
+            "память?",
+        )
+        .await;
+        assert_eq!(answer, "Память в порядке.");
+        assert_eq!(events[0], "call system_info");
+        assert!(events[1].starts_with("result unix-время"));
+        assert!(agent.history()[2].content.starts_with("<tool_response>"));
+    }
+
+    #[tokio::test]
+    async fn re_asks_once_when_an_action_is_made_up() {
+        let (agent, answer, events) = run(
+            &["Звук добавлен.", "Не могу, нет такого инструмента."],
+            true,
+            "прибавь",
+        )
+        .await;
+        assert!(events.is_empty());
+        assert_eq!(answer, "Не могу, нет такого инструмента.");
+        assert!(
+            agent
+                .history()
+                .iter()
+                .any(|m| m.content.starts_with("Ты не вызвал инструмент"))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refused_risky_tool_does_not_run() {
+        let (_, _, events) = run(
+            &[
+                "{\"name\": \"open_app\", \"arguments\": {\"name\": \"calc\"}}",
+                "Ок, не запускаю.",
+            ],
+            false,
+            "калькулятор",
+        )
+        .await;
+        assert_eq!(
+            events,
+            ["call open_app", "result пользователь запретил это действие"]
+        );
+    }
+
+    #[tokio::test]
+    async fn app_tools_come_from_the_host() {
+        let (agent, _, events) = run(
+            &[
+                "{\"name\": \"list_models\", \"arguments\": {}}",
+                "Есть qwen3-8b.",
+            ],
+            true,
+            "модели?",
+        )
+        .await;
+        assert_eq!(events, ["call list_models", "result qwen3-8b"]);
+        assert!(
+            agent
+                .history
+                .first()
+                .unwrap()
+                .content
+                .contains("list_models")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_tool_is_reported_to_the_model() {
+        let (_, _, events) = run(
+            &["{\"name\": \"fly\", \"arguments\": {}}", "Не умею."],
+            true,
+            "лети",
+        )
+        .await;
+        assert_eq!(events[1], "result ошибка: нет инструмента fly");
+    }
+
+    #[test]
+    fn saved_history_replaces_the_conversation_but_keeps_the_prompt() {
+        let mut agent = Agent::new(Box::new(Scripted::new(&[])), "");
+        agent.set_history(vec![
+            Message::new("system", "чужой"),
+            Message::new("user", "привет"),
+        ]);
+        assert_eq!(agent.history().len(), 1);
+        assert!(agent.history[0].content.contains("HomeLLM"));
+        agent.reset();
+        assert!(agent.history().is_empty());
+    }
 }

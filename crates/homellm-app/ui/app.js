@@ -149,11 +149,24 @@ listen("tool", ({ payload }) => {
 
 listen("tool-result", ({ payload }) => addAction(payload.result, true));
 
+// The answer goes back on the button click itself: a dialog's `close` event is not
+// reliable (it is not fired while the window is hidden), and a lost answer hangs the chat.
 listen("confirm", ({ payload }) => {
   const dialog = $("confirm");
   $("confirm-text").textContent = `${payload.tool} ${JSON.stringify(payload.args)}`;
-  dialog.onclose = () => invoke("answer", { id: payload.id, allow: dialog.returnValue === "yes" });
-  dialog.returnValue = "";
+  let answered = false;
+  const reply = (allow) => {
+    if (answered) return;
+    answered = true;
+    if (dialog.open) dialog.close();
+    invoke("answer", { id: payload.id, allow });
+  };
+  dialog.querySelectorAll("button").forEach((b) => (b.onclick = (e) => {
+    e.preventDefault();
+    reply(b.value === "yes");
+  }));
+  dialog.oncancel = () => reply(false);
+  dialog.onclose = () => reply(false);
   dialog.showModal();
 });
 
@@ -226,12 +239,18 @@ async function showChats() {
       input.focus();
       input.select();
       input.onclick = (ev) => ev.stopPropagation();
-      const done = async () => {
-        await invoke("rename_chat", { id: chat.id, title: input.value || chat.title });
+      let finished = false;
+      const done = async (save) => {
+        if (finished) return;
+        finished = true;
+        if (save) await invoke("rename_chat", { id: chat.id, title: input.value.trim() || chat.title });
         showChats();
       };
-      input.onblur = done;
-      input.onkeydown = (ev) => ev.key === "Enter" && input.blur();
+      input.onblur = () => done(true);
+      input.onkeydown = (ev) => {
+        if (ev.key === "Enter") done(true);
+        if (ev.key === "Escape") done(false);
+      };
     };
     remove.onclick = async (e) => {
       e.stopPropagation();
@@ -387,6 +406,7 @@ async function fillSettings() {
 // Preview a theme as soon as it is picked; closing without saving puts the saved one back.
 form.elements.theme.addEventListener("change", () => applyTheme(form.elements.theme.value));
 $("settings-dialog").addEventListener("close", fillSettings);
+$("settings-dialog").querySelector(".panel-head button").addEventListener("click", fillSettings);
 
 $("settings-btn").onclick = async () => {
   await fillSettings();
