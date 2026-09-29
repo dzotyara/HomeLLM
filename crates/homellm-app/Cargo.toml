@@ -23,4 +23,5 @@ serde_json.workspace = true
 tauri = { version = "2.12", features = ["tray-icon"] }
 tauri-plugin-autostart = "2.6"
 tauri-plugin-global-shortcut = "2.4"
+tauri-plugin-notification = "2.5"
 tokio.workspace = true

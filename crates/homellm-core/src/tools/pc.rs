@@ -52,6 +52,20 @@ pub fn tools() -> Vec<Tool> {
             run: set_volume,
         },
         Tool {
+            name: "clipboard_read",
+            description: "Прочитать текст из буфера обмена («что я скопировал», «переведи скопированное»).",
+            parameters: || json!({"type": "object", "properties": {}}),
+            risk: Risk::Safe,
+            run: clipboard_read,
+        },
+        Tool {
+            name: "clipboard_write",
+            description: "Положить текст в буфер обмена («скопируй это»).",
+            parameters: || json!({"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}),
+            risk: Risk::Safe,
+            run: clipboard_write,
+        },
+        Tool {
             name: "system_info",
             description: "Текущие дата и время, ОС, загрузка памяти.",
             parameters: || json!({"type": "object", "properties": {}}),
@@ -217,6 +231,25 @@ fn set_volume(args: &Value) -> Result<String> {
         }
     }
     Ok(format!("громкость {percent}%"))
+}
+
+/// Enough for the model's context; a huge clipboard is cut.
+const CLIPBOARD_LIMIT: usize = 4000;
+
+fn clipboard_read(_: &Value) -> Result<String> {
+    let text = arboard::Clipboard::new()?
+        .get_text()
+        .context("в буфере нет текста")?;
+    let mut cut: String = text.chars().take(CLIPBOARD_LIMIT).collect();
+    if text.chars().count() > CLIPBOARD_LIMIT {
+        cut.push_str("\n…(обрезано)");
+    }
+    Ok(cut)
+}
+
+fn clipboard_write(args: &Value) -> Result<String> {
+    arboard::Clipboard::new()?.set_text(arg(args, "text")?.to_string())?;
+    Ok("скопировано в буфер обмена".into())
 }
 
 fn system_info(_: &Value) -> Result<String> {

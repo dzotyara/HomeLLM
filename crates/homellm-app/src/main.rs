@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod chats;
+mod reminders;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -84,6 +85,10 @@ impl ToolHost for AppTools {
                    "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "download_model", "description": "Скачать модель из каталога по id (например qwen3-8b).", "parameters": id}),
             json!({"name": "switch_model", "description": "Переключиться на скачанную модель по id.", "parameters": id}),
+            json!({"name": "remind", "description": "Напомнить через N минут (системное уведомление). «Через час» = 60.",
+                   "parameters": {"type": "object", "properties": {"minutes": {"type": "number"}, "text": {"type": "string"}},
+                   "required": ["minutes", "text"]}}),
+            json!({"name": "list_reminders", "description": "Какие напоминания стоят.", "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "set_setting", "description": "Изменить настройку приложения. theme: mint (ночь и мята), lime (графит и лайм), violet (полночь и фиалка), amber (тёплый янтарь).",
                    "parameters": {"type": "object", "properties": {
                        "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir", "theme"]},
@@ -155,6 +160,29 @@ impl ToolHost for AppTools {
                     format!("переключусь на {} сразу после этого ответа", m.name)
                 }
             },
+            "remind" => {
+                let minutes = args["minutes"]
+                    .as_f64()
+                    .or_else(|| args["minutes"].as_str().and_then(|s| s.parse().ok()));
+                match minutes {
+                    Some(m) => {
+                        let r = reminders::add(m, args["text"].as_str().unwrap_or("напоминание"));
+                        format!("напомню {}: {}", reminders::left(r.due), r.text)
+                    }
+                    None => "ошибка: нужно число минут".into(),
+                }
+            }
+            "list_reminders" => {
+                let all = reminders::load();
+                if all.is_empty() {
+                    "напоминаний нет".into()
+                } else {
+                    all.iter()
+                        .map(|r| format!("{} — {}", reminders::left(r.due), r.text))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
             "set_setting" => {
                 let value = args["value"].as_str().unwrap_or_default().to_string();
                 let mut s = settings::get();
@@ -635,6 +663,7 @@ fn main() {
         ..Default::default()
     };
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -668,6 +697,23 @@ fn main() {
                 }
             }
             apply_autostart(app.handle(), settings::get().autostart);
+            // Fire due reminders: a system notification plus a line in the chat.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri_plugin_notification::NotificationExt;
+                loop {
+                    for r in reminders::take_due() {
+                        let _ = handle
+                            .notification()
+                            .builder()
+                            .title("HomeLLM — напоминание")
+                            .body(&r.text)
+                            .show();
+                        let _ = handle.emit("reminder", &r.text);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                }
+            });
             if std::env::args().any(|a| a == "--minimized")
                 && let Some(window) = app.get_webview_window("main")
             {

@@ -298,6 +298,7 @@ $("new-chat").onclick = async () => {
 
 listen("chats-changed", showChats);
 listen("new-chat", () => $("new-chat").click());
+listen("reminder", ({ payload }) => addMessage("bot", `⏰ Напоминание: ${payload}`));
 listen("focus-input", () => $("input").focus());
 
 // ---------- model, hardware ----------
