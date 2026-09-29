@@ -21,7 +21,11 @@ use homellm_core::hardware::{self, gib};
 use homellm_core::settings::{self, Settings};
 use homellm_core::{catalog, download};
 use serde_json::{Value, json};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::ShortcutState;
 use tokio::sync::oneshot;
 
 #[derive(Default)]
@@ -541,13 +545,82 @@ fn answer(state: State<'_, App>, id: u64, allow: bool) {
     }
 }
 
+/// Brings the main window up from the tray or from behind other windows.
+fn show_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// The global hotkey: show the window, or hide it when it is already in front.
+fn toggle_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            show_main(app);
+            let _ = app.emit("focus-input", ());
+        }
+    }
+}
+
+/// Keeps the Windows autostart entry in line with the setting.
+fn apply_autostart(app: &AppHandle, on: bool) {
+    let launch = app.autolaunch();
+    let _ = if on {
+        launch.enable()
+    } else {
+        launch.disable()
+    };
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Открыть HomeLLM", true, None::<&str>)?;
+    let new = MenuItem::with_id(app, "new", "Новый чат", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &new, &quit])?;
+    let mut tray = TrayIconBuilder::with_id("main")
+        .tooltip("HomeLLM — Alt+Space")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main(app),
+            "new" => {
+                show_main(app);
+                let _ = app.emit("new-chat", ());
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[tauri::command]
 fn get_settings() -> Settings {
     settings::get()
 }
 
 #[tauri::command]
-fn save_settings(value: Settings) -> Result<(), String> {
+fn save_settings(app: AppHandle, value: Settings) -> Result<(), String> {
+    if value.autostart != settings::get().autostart {
+        apply_autostart(&app, value.autostart);
+    }
     let mut s = value;
     let saved = settings::get();
     s.last_model = saved.last_model;
@@ -562,8 +635,44 @@ fn main() {
         ..Default::default()
     };
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        toggle_main(app);
+                    }
+                })
+                .build(),
+        )
         .manage(app)
+        .on_window_event(|window, event| {
+            // Closing hides into the tray: the model stays loaded and answers at once.
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && !settings::get().quit_on_close
+            {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .setup(|app| {
+            build_tray(app)?;
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                // Alt+Space may be taken (PowerToys Run): the app works without it.
+                if let Err(e) = app.global_shortcut().register("alt+space") {
+                    eprintln!("hotkey Alt+Space is not available: {e}");
+                }
+            }
+            apply_autostart(app.handle(), settings::get().autostart);
+            if std::env::args().any(|a| a == "--minimized")
+                && let Some(window) = app.get_webview_window("main")
+            {
+                let _ = window.hide();
+            }
             // Resume the downloads the last run did not finish.
             for id in settings::get().downloads {
                 let handle = app.handle().clone();

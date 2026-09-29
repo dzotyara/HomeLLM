@@ -30,6 +30,12 @@ pub struct Settings {
     /// .gguf files added by path, anywhere on disk.
     #[serde(default)]
     pub custom_models: Vec<String>,
+    /// Start with Windows (hidden in the tray).
+    #[serde(default)]
+    pub autostart: bool,
+    /// Closing the window quits; by default it hides into the tray.
+    #[serde(default)]
+    pub quit_on_close: bool,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

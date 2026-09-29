@@ -20,5 +20,7 @@ directories.workspace = true
 homellm-core = { path = "../homellm-core", default-features = false, features = ["llama-cpu"] }
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2.12", features = [] }
+tauri = { version = "2.12", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.6"
+tauri-plugin-global-shortcut = "2.4"
 tokio.workspace = true

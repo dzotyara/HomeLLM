@@ -297,6 +297,8 @@ $("new-chat").onclick = async () => {
 };
 
 listen("chats-changed", showChats);
+listen("new-chat", () => $("new-chat").click());
+listen("focus-input", () => $("input").focus());
 
 // ---------- model, hardware ----------
 function showModel(info) {
@@ -439,6 +441,8 @@ async function fillSettings() {
   const s = await invoke("get_settings");
   for (const key of ["music_dir", "music_search", "models_dir"]) form.elements[key].value = s[key] || "";
   form.elements.theme.value = THEMES.includes(s.theme) ? s.theme : "mint";
+  form.elements.autostart.checked = !!s.autostart;
+  form.elements.quit_on_close.checked = !!s.quit_on_close;
   applyTheme(s.theme);
 }
 
@@ -456,7 +460,14 @@ listen("settings-changed", fillSettings);
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const value = { ...Object.fromEntries(new FormData(form)), last_model: "", downloads: [] };
+  const value = {
+    ...Object.fromEntries(new FormData(form)),
+    autostart: form.elements.autostart.checked,
+    quit_on_close: form.elements.quit_on_close.checked,
+    last_model: "",
+    downloads: [],
+    custom_models: [],
+  };
   try {
     await invoke("save_settings", { value });
     $("saved").textContent = "Сохранено";
