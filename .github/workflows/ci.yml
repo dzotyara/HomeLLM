@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: Format, lint, tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: sudo apt-get update && sudo apt-get install -y libxdo-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      # The core without llama.cpp: fast, and everything but inference is covered.
+      - run: cargo clippy -p homellm-core -p homellm-cli --no-default-features
+      - run: cargo test -p homellm-core --no-default-features
+
+  windows:
+    name: Build the app (Windows, CPU)
+    runs-on: windows-latest
+    env:
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # CPU build: the runner has no Vulkan SDK. Releases will add the GPU build.
+      - run: cargo build --release -p homellm-app --no-default-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homellm-app-windows-cpu
+          path: target/release/homellm-app.exe
