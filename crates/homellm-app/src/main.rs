@@ -369,8 +369,21 @@ fn save_chat(state: &App, first_text: &str, history: Vec<Message>) {
 }
 
 #[tauri::command]
-fn list_chats(state: State<'_, App>) -> Value {
+fn list_chats(state: State<'_, App>, query: Option<String>) -> Value {
     let mut chats = state.chats.lock().unwrap().clone();
+    // Search by title and by what was said (not by tool results).
+    if let Some(q) = query
+        .map(|q| q.trim().to_lowercase())
+        .filter(|q| !q.is_empty())
+    {
+        chats.retain(|c| {
+            c.title.to_lowercase().contains(&q)
+                || c.history.iter().any(|m| {
+                    !m.content.starts_with("<tool_response>")
+                        && m.content.to_lowercase().contains(&q)
+                })
+        });
+    }
     chats.sort_by(|a, b| b.updated.cmp(&a.updated));
     let current = *state.current_chat.lock().unwrap();
     let list: Vec<Value> = chats
@@ -432,6 +445,68 @@ async fn delete_chat(state: State<'_, App>, id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Saves a chat as Markdown into Downloads and returns the file path.
+#[tauri::command]
+fn export_chat(state: State<'_, App>, id: u64) -> Result<String, String> {
+    let chat = state
+        .chats
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|c| c.id == id)
+        .cloned()
+        .ok_or("чат не найден")?;
+    let mut md = format!(
+        "# {}
+
+",
+        chat.title
+    );
+    for m in &chat.history {
+        let text = m.content.trim();
+        if m.role == "user" && text.starts_with("<tool_response>") {
+            md.push_str(&format!(
+                "> ✓ {}
+
+",
+                text.trim_start_matches("<tool_response>")
+                    .trim_end_matches("</tool_response>")
+                    .trim()
+            ));
+        } else if m.role == "user" && !text.starts_with("Ты не вызвал инструмент")
+        {
+            md.push_str(&format!(
+                "**Я:** {text}
+
+"
+            ));
+        } else if m.role == "assistant" && !text.starts_with('{') && !text.contains("<tool_call>") {
+            md.push_str(&format!(
+                "**HomeLLM:** {text}
+
+"
+            ));
+        }
+    }
+    let dir = directories::UserDirs::new()
+        .and_then(|d| d.download_dir().map(|p| p.to_path_buf()))
+        .unwrap_or_else(homellm_core::data_dir);
+    let safe: String = chat
+        .title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let path = dir.join(format!("HomeLLM — {}.md", safe.trim()));
+    std::fs::write(&path, md).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
 #[tauri::command]
 fn answer(state: State<'_, App>, id: u64, allow: bool) {
     if let Some(tx) = state.pending.lock().unwrap().remove(&id) {
@@ -483,6 +558,7 @@ fn main() {
             new_chat,
             rename_chat,
             delete_chat,
+            export_chat,
             answer,
             get_settings,
             save_settings

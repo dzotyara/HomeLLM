@@ -84,6 +84,7 @@ aside {
   background: var(--accent); color: var(--accent-ink); font-weight: 600;
 }
 .new-chat:hover { background: var(--accent-hover); }
+.chat-search { margin-top: 10px; padding: 7px 11px; font-size: 13px; background: var(--panel); }
 .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 8px 4px; }
 .chat-item {
   display: flex; align-items: center; gap: 4px;

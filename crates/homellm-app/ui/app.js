@@ -217,7 +217,8 @@ $("input").addEventListener("input", autosize);
 
 // ---------- chats ----------
 async function showChats() {
-  const { chats, current } = await invoke("list_chats");
+  const query = $("chat-search").value;
+  const { chats, current } = await invoke("list_chats", { query });
   const list = $("chat-list");
   list.innerHTML = "";
   for (const chat of chats) {
@@ -226,10 +227,21 @@ async function showChats() {
     const rename = el("button", "act");
     rename.title = "Переименовать";
     rename.append(icon("i-edit"));
+    const exp = el("button", "act");
+    exp.title = "Сохранить в Markdown";
+    exp.append(icon("i-export"));
+    exp.onclick = async (e) => {
+      e.stopPropagation();
+      try {
+        alert(`Сохранено: ${await invoke("export_chat", { id: chat.id })}`);
+      } catch (err) {
+        alert(`Не сохранилось: ${err}`);
+      }
+    };
     const remove = el("button", "act");
     remove.title = "Удалить";
     remove.append(icon("i-trash"));
-    item.append(title, rename, remove);
+    item.append(title, rename, exp, remove);
     item.onclick = () => openChat(chat.id);
     rename.onclick = (e) => {
       e.stopPropagation();
@@ -261,7 +273,14 @@ async function showChats() {
     };
     list.append(item);
   }
+  if (!chats.length && query) list.append(el("div", "hint", "Ничего не нашлось"));
 }
+
+let searchTimer;
+$("chat-search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(showChats, 150);
+});
 
 async function openChat(id) {
   if (busy) return;
