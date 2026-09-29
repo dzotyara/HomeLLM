@@ -24,6 +24,9 @@ pub struct Settings {
     /// The window's colour theme: mint (default), lime, violet or amber.
     #[serde(default)]
     pub theme: String,
+    /// Downloads in progress: resumed when the app starts again.
+    #[serde(default)]
+    pub downloads: Vec<String>,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

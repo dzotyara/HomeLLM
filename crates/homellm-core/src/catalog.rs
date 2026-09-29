@@ -58,6 +58,12 @@ impl ModelEntry {
         has(&self.file, self.size) && self.extra.iter().all(|e| has(&e.file, e.size))
     }
 
+    /// Bytes of the main file already downloaded by an interrupted download.
+    pub fn partial(&self) -> u64 {
+        std::fs::metadata(crate::models_dir().join(format!("{}.part", self.file)))
+            .map_or(0, |m| m.len())
+    }
+
     /// Runs in the chat engine (not a voice model).
     pub fn is_llm(&self) -> bool {
         self.kind != "voice"

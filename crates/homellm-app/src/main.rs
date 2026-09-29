@@ -8,7 +8,7 @@
 
 mod chats;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -34,6 +34,8 @@ struct App {
     /// Risky tool calls waiting for the user's answer in the window.
     pending: Mutex<HashMap<u64, oneshot::Sender<bool>>>,
     next_id: AtomicU64,
+    /// Models being downloaded right now.
+    downloading: Mutex<HashSet<String>>,
     /// A model switch asked for in the chat: done once the answer is out.
     switch_to: Mutex<Option<String>>,
 }
@@ -172,8 +174,19 @@ impl ToolHost for AppTools {
     }
 }
 
+/// Downloads a model; remembered in the settings until it finishes, so a download cut by
+/// closing the app resumes on the next start.
 async fn pull_model(app: &AppHandle, id: &str) -> Result<(), String> {
     let model = catalog::find(id).ok_or("нет такой модели")?;
+    let state = app.state::<App>();
+    if !state.downloading.lock().unwrap().insert(id.to_string()) {
+        return Ok(()); // already running
+    }
+    let mut s = settings::get();
+    if !s.downloads.iter().any(|d| d == id) {
+        s.downloads.push(id.to_string());
+        let _ = settings::save(s);
+    }
     let mut last = u64::MAX;
     let result = download::download(&model, |done, total| {
         let permille = done * 1000 / total.max(1);
@@ -184,6 +197,10 @@ async fn pull_model(app: &AppHandle, id: &str) -> Result<(), String> {
     })
     .await
     .map_err(err_text);
+    state.downloading.lock().unwrap().remove(id);
+    let mut s = settings::get();
+    s.downloads.retain(|d| d != id);
+    let _ = settings::save(s);
     let _ = app.emit(
         "download-done",
         json!({"id": id, "error": result.as_ref().err()}),
@@ -239,7 +256,8 @@ fn hw_info() -> Value {
 }
 
 #[tauri::command]
-fn list_models() -> Value {
+fn list_models(state: State<'_, App>) -> Value {
+    let downloading = state.downloading.lock().unwrap().clone();
     let hw = hardware::detect();
     let recommended = catalog::recommend(&hw).map(|m| m.id);
     let models: Vec<Value> = catalog::load()
@@ -249,6 +267,7 @@ fn list_models() -> Value {
             json!({
                 "id": m.id, "kind": m.kind, "name": m.name, "size": gib(m.size), "about": m.about, "tools": m.tools,
                 "fit": format!("{fit:?}"), "fit_label": fit.label(), "downloaded": m.is_downloaded(),
+                "bytes": m.size, "partial": m.partial(), "downloading": downloading.contains(&m.id),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })
         })
@@ -428,7 +447,9 @@ fn get_settings() -> Settings {
 #[tauri::command]
 fn save_settings(value: Settings) -> Result<(), String> {
     let mut s = value;
-    s.last_model = settings::get().last_model;
+    let saved = settings::get();
+    s.last_model = saved.last_model;
+    s.downloads = saved.downloads;
     settings::save(s).map_err(err_text)
 }
 
@@ -439,6 +460,16 @@ fn main() {
     };
     tauri::Builder::default()
         .manage(app)
+        .setup(|app| {
+            // Resume the downloads the last run did not finish.
+            for id in settings::get().downloads {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = pull_model(&handle, &id).await;
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             hw_info,
             list_models,

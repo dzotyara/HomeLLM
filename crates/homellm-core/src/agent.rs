@@ -121,6 +121,7 @@ impl Agent {
                 return Ok(reply);
             };
             used_tool = true;
+            let (name, args) = fix_call(text, name, args);
             on_event(Event::ToolCall {
                 name: name.clone(),
                 args: args.clone(),
@@ -156,6 +157,26 @@ impl Agent {
             Err(e) => format!("ошибка: {e}"),
         }
     }
+}
+
+/// Small models answer «громкость 70» with a volume step: when the user named a volume
+/// level and the model reached for a step or mute, set that exact level instead.
+fn fix_call(user_text: &str, name: String, args: Value) -> (String, Value) {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"(?i)(громкост|звук)\D{0,20}?(\d{1,3})\s*%?").unwrap());
+    let is_step = name == "media"
+        && args["action"]
+            .as_str()
+            .is_some_and(|a| a.starts_with("volume"));
+    if (is_step || name == "set_volume")
+        && let Some(level) = re
+            .captures(user_text)
+            .and_then(|c| c[2].parse::<u64>().ok())
+            .filter(|l| *l <= 100)
+    {
+        return ("set_volume".into(), serde_json::json!({"percent": level}));
+    }
+    (name, args)
 }
 
 /// "Сделал", "включил", "готово"... — the reply says something was done.
@@ -239,6 +260,32 @@ mod tests {
         let (name, args) = parse_call(text).unwrap();
         assert_eq!(name, "open_app");
         assert_eq!(args["name"], "notepad");
+    }
+
+    #[test]
+    fn a_named_volume_level_wins_over_a_step() {
+        let step = serde_json::json!({"action": "volume_down"});
+        assert_eq!(
+            fix_call("сделай громкость 70", "media".into(), step.clone()).1["percent"],
+            70
+        );
+        assert_eq!(
+            fix_call("сделай мне звук в 100", "media".into(), step.clone()).0,
+            "set_volume"
+        );
+        assert_eq!(
+            fix_call("прибавь звук", "media".into(), step.clone()).0,
+            "media"
+        );
+        assert_eq!(
+            fix_call(
+                "включи трек 5",
+                "media".into(),
+                serde_json::json!({"action": "next"})
+            )
+            .0,
+            "media"
+        );
     }
 
     #[test]

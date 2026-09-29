@@ -329,14 +329,15 @@ async function showModels() {
       run.disabled = isCurrent;
       run.onclick = () => start(m, run);
       actions.append(run);
-    } else if (downloading.has(m.id)) {
+    } else if (downloading.has(m.id) || m.downloading) {
       const bar = el("progress");
       bar.id = `bar-${m.id}`;
       bar.max = 1000;
-      bar.value = downloading.get(m.id);
+      bar.value = downloading.get(m.id) ?? Math.floor((m.partial * 1000) / m.bytes);
       actions.append(bar, el("span", "hint", "скачиваю…"));
     } else {
-      const get = el("button", "", "Скачать");
+      const percent = Math.floor((m.partial * 100) / m.bytes);
+      const get = el("button", "", m.partial ? `Продолжить (${percent}%)` : "Скачать");
       get.disabled = m.fit === "TooBig";
       get.onclick = () => {
         downloading.set(m.id, 0);
@@ -417,7 +418,7 @@ listen("settings-changed", fillSettings);
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const value = { ...Object.fromEntries(new FormData(form)), last_model: "" };
+  const value = { ...Object.fromEntries(new FormData(form)), last_model: "", downloads: [] };
   try {
     await invoke("save_settings", { value });
     $("saved").textContent = "Сохранено";
