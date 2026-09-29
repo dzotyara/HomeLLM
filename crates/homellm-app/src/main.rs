@@ -411,6 +411,7 @@ fn list_models(state: State<'_, App>) -> Value {
                 "id": m.id, "kind": m.kind, "name": m.name, "size": gib(m.size), "about": m.about, "tools": m.tools,
                 "fit": format!("{fit:?}"), "fit_label": fit.label(), "downloaded": m.is_downloaded(),
                 "speed": speeds.get(&m.id).map(|s| s.round()),
+                "new": catalog::is_new(&m.id),
                 "bytes": m.size, "partial": m.partial(), "downloading": downloading.contains(&m.id),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })
@@ -835,6 +836,12 @@ fn main() {
                 }
             }
             apply_autostart(app.handle(), settings::get().autostart);
+            // A fresher model catalog from GitHub, once a day; offline is fine.
+            tauri::async_runtime::spawn(async {
+                if let Err(e) = catalog::refresh().await {
+                    eprintln!("catalog refresh skipped: {e:#}");
+                }
+            });
             // Fire due reminders: a system notification plus a line in the chat.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

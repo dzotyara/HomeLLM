@@ -110,8 +110,63 @@ pub fn fit(model: &ModelEntry, hw: &Hardware) -> Fit {
     }
 }
 
-pub fn load() -> Vec<ModelEntry> {
+/// The catalog shipped inside the app.
+pub fn builtin() -> Vec<ModelEntry> {
     serde_json::from_str(BUILTIN).expect("catalog/models.json is valid")
+}
+
+/// The fresher catalog fetched from GitHub, else the built-in one.
+pub fn load() -> Vec<ModelEntry> {
+    std::fs::read_to_string(fetched_file())
+        .ok()
+        .and_then(|text| parse(&text))
+        .unwrap_or_else(builtin)
+}
+
+const REMOTE: &str = "https://raw.githubusercontent.com/dzotyara/HomeLLM/main/catalog/models.json";
+
+fn fetched_file() -> PathBuf {
+    crate::data_dir().join("catalog.json")
+}
+
+/// Accepts a catalog only if it parses and is not suspiciously small.
+fn parse(text: &str) -> Option<Vec<ModelEntry>> {
+    let models: Vec<ModelEntry> = serde_json::from_str(text).ok()?;
+    (models.len() >= 5
+        && models
+            .iter()
+            .all(|m| m.url.starts_with("https://") && !m.sha256.is_empty()))
+    .then_some(models)
+}
+
+/// Fetches the catalog from GitHub at most once a day; returns how many models are new.
+pub async fn refresh() -> anyhow::Result<usize> {
+    let file = fetched_file();
+    let fresh = std::fs::metadata(&file)
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().is_ok_and(|age| age.as_secs() < 24 * 3600));
+    if fresh {
+        return Ok(0);
+    }
+    let text = reqwest::Client::builder()
+        .user_agent("HomeLLM")
+        .build()?
+        .get(REMOTE)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let models = parse(&text).ok_or_else(|| anyhow::anyhow!("the fetched catalog is broken"))?;
+    let before: std::collections::HashSet<String> = load().into_iter().map(|m| m.id).collect();
+    std::fs::create_dir_all(file.parent().unwrap())?;
+    std::fs::write(&file, text)?;
+    Ok(models.iter().filter(|m| !before.contains(&m.id)).count())
+}
+
+/// Not in the catalog this build shipped with: marked «новое» in the window.
+pub fn is_new(id: &str) -> bool {
+    !id.starts_with("local:") && !builtin().iter().any(|m| m.id == id)
 }
 
 pub fn find(id: &str) -> Option<ModelEntry> {
@@ -208,7 +263,8 @@ mod tests {
 
     #[test]
     fn catalog_entries_are_complete_and_unique() {
-        let models = load();
+        let models = builtin();
+        assert!(parse(BUILTIN).is_some());
         let mut ids = std::collections::HashSet::new();
         for m in &models {
             assert!(ids.insert(m.id.clone()), "duplicate id {}", m.id);

@@ -355,6 +355,7 @@ async function showModels() {
     card.append(el("h4", "", m.name));
     const badges = el("div", "badges");
     if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
+    if (m.new) badges.append(el("span", "badge rec", "новое"));
     badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
     if (m.speed) badges.append(el("span", "badge", `~${m.speed} ток/с у вас`));
     if (!m.tools && m.kind !== "voice") badges.append(el("span", "badge", "без управления ПК"));
