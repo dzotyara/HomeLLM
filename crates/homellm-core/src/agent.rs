@@ -30,6 +30,10 @@ pub trait ToolHost: Send + Sync {
     fn specs(&self) -> Vec<Value>;
     /// `None` when the tool is not one of ours.
     async fn call(&self, name: &str, args: &Value) -> Option<String>;
+    /// Added to the system prompt before every answer (e.g. what the model remembers about the user).
+    fn context(&self) -> String {
+        String::new()
+    }
 }
 
 /// What happened during one turn, for the UI.
@@ -40,6 +44,8 @@ pub enum Event {
 
 pub struct Agent {
     engine: Box<dyn Engine>,
+    /// The system prompt without the host's context.
+    system: String,
     host: Option<Arc<dyn ToolHost>>,
     history: Vec<Message>,
 }
@@ -67,7 +73,8 @@ impl Agent {
         Self {
             engine,
             host,
-            history: vec![Message::new("system", system)],
+            history: vec![Message::new("system", system.clone())],
+            system,
         }
     }
 
@@ -100,6 +107,14 @@ impl Agent {
         tokens: TokenSink,
         mut on_event: impl FnMut(Event),
     ) -> Result<String> {
+        if let Some(host) = &self.host {
+            let context = host.context();
+            self.history[0].content = if context.is_empty() {
+                self.system.clone()
+            } else {
+                format!("{}\n\n{context}", self.system)
+            };
+        }
         self.history.push(Message::new("user", text));
         let mut used_tool = false;
         let mut nudged = false;
@@ -427,6 +442,34 @@ mod tests {
         assert_eq!(
             events,
             ["call open_app", "result пользователь запретил это действие"]
+        );
+    }
+
+    #[tokio::test]
+    async fn host_context_reaches_the_system_prompt() {
+        struct Remembers;
+        #[async_trait]
+        impl ToolHost for Remembers {
+            fn specs(&self) -> Vec<Value> {
+                vec![]
+            }
+            async fn call(&self, _: &str, _: &Value) -> Option<String> {
+                None
+            }
+            fn context(&self) -> String {
+                "Пользователь любит Кино".into()
+            }
+        }
+        let engine = Scripted::new(&["Ок."]);
+        let mut agent = Agent::with_host(Box::new(engine), "", Some(Arc::new(Remembers)));
+        agent
+            .send("привет", &Answer(true), None, |_| {})
+            .await
+            .unwrap();
+        assert!(
+            agent.history[0]
+                .content
+                .ends_with("Пользователь любит Кино")
         );
     }
 

@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod chats;
+mod memory;
 mod reminders;
 mod scenarios;
 
@@ -97,12 +98,20 @@ impl ToolHost for AppTools {
             json!({"name": "list_scenarios", "description": "Какие сценарии сохранены.", "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "delete_scenario", "description": "Удалить сценарий по имени.",
                    "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}),
+            json!({"name": "remember", "description": "Запомнить факт о пользователе надолго, во всех чатах («запомни, что я люблю Кино»).",
+                   "parameters": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}}),
+            json!({"name": "forget", "description": "Забыть факты о пользователе, в которых есть эти слова.",
+                   "parameters": {"type": "object", "properties": {"about": {"type": "string"}}, "required": ["about"]}}),
             json!({"name": "list_reminders", "description": "Какие напоминания стоят.", "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "set_setting", "description": "Изменить настройку приложения. theme: mint (ночь и мята), lime (графит и лайм), violet (полночь и фиалка), amber (тёплый янтарь).",
                    "parameters": {"type": "object", "properties": {
                        "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir", "theme"]},
                        "value": {"type": "string"}}, "required": ["key", "value"]}}),
         ]
+    }
+
+    fn context(&self) -> String {
+        memory::context()
     }
 
     async fn call(&self, name: &str, args: &Value) -> Option<String> {
@@ -255,6 +264,22 @@ impl ToolHost for AppTools {
                     format!("сценарий «{name}» удалён")
                 } else {
                     "нет такого сценария".into()
+                }
+            }
+            "remember" => {
+                let fact = args["fact"].as_str().unwrap_or_default();
+                if memory::remember(fact) {
+                    format!("запомнил: {fact}")
+                } else {
+                    "это я уже помню".into()
+                }
+            }
+            "forget" => {
+                let gone = memory::forget(args["about"].as_str().unwrap_or_default());
+                if gone.is_empty() {
+                    "ничего такого не помню".into()
+                } else {
+                    format!("забыл: {}", gone.join("; "))
                 }
             }
             "list_reminders" => {
