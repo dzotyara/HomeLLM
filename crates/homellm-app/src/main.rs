@@ -90,9 +90,11 @@ impl ToolHost for AppTools {
                    "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "download_model", "description": "Скачать модель из каталога по id (например qwen3-8b).", "parameters": id}),
             json!({"name": "switch_model", "description": "Переключиться на скачанную модель по id.", "parameters": id}),
-            json!({"name": "remind", "description": "Напомнить через N минут (системное уведомление). «Через час» = 60.",
-                   "parameters": {"type": "object", "properties": {"minutes": {"type": "number"}, "text": {"type": "string"}},
-                   "required": ["minutes", "text"]}}),
+            json!({"name": "remind", "description": "Напомнить (системное уведомление): через minutes минут («через час» = 60) или в at — время «18:00».",
+                   "parameters": {"type": "object", "properties": {"minutes": {"type": "number"}, "at": {"type": "string"}, "text": {"type": "string"}},
+                   "required": ["text"]}}),
+            json!({"name": "cancel_reminder", "description": "Отменить напоминания, в тексте которых есть эти слова.",
+                   "parameters": {"type": "object", "properties": {"about": {"type": "string"}}, "required": ["about"]}}),
             json!({"name": "save_scenario", "description": "Запомнить сценарий — несколько действий под одним именем. steps: [{\"tool\": имя инструмента, \"args\": {...}}].",
                    "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "steps": {"type": "array", "items": {"type": "object"}}},
                    "required": ["name", "steps"]}}),
@@ -191,12 +193,26 @@ impl ToolHost for AppTools {
                 let minutes = args["minutes"]
                     .as_f64()
                     .or_else(|| args["minutes"].as_str().and_then(|s| s.parse().ok()));
-                match minutes {
-                    Some(m) => {
-                        let r = reminders::add(m, args["text"].as_str().unwrap_or("напоминание"));
-                        format!("напомню {}: {}", reminders::left(r.due), r.text)
+                let due = match (args["at"].as_str().filter(|a| !a.is_empty()), minutes) {
+                    (Some(at), _) => reminders::at_time(at),
+                    (None, Some(m)) => Some(chats::now() + (m.max(0.0) * 60.0).round() as u64),
+                    (None, None) => None,
+                };
+                match due {
+                    Some(due) => {
+                        let r = reminders::add(due, args["text"].as_str().unwrap_or("напоминание"));
+                        format!("напомню {}: {}", reminders::when(r.due), r.text)
                     }
-                    None => "ошибка: нужно число минут".into(),
+                    None => "ошибка: нужно время «18:00» или число минут".into(),
+                }
+            }
+            "cancel_reminder" => {
+                let gone = reminders::cancel(args["about"].as_str().unwrap_or_default());
+                if gone.is_empty() {
+                    "такого напоминания нет".into()
+                } else {
+                    let texts: Vec<&str> = gone.iter().map(|r| r.text.as_str()).collect();
+                    format!("отменил: {}", texts.join("; "))
                 }
             }
             "save_scenario" => {
@@ -297,7 +313,7 @@ impl ToolHost for AppTools {
                     "напоминаний нет".into()
                 } else {
                     all.iter()
-                        .map(|r| format!("{} — {}", reminders::left(r.due), r.text))
+                        .map(|r| format!("{} — {}", reminders::when(r.due), r.text))
                         .collect::<Vec<_>>()
                         .join("\n")
                 }
@@ -917,6 +933,16 @@ fn set_pet(app: &AppHandle, on: bool) {
 }
 
 #[tauri::command]
+fn list_memory() -> Vec<String> {
+    memory::load()
+}
+
+#[tauri::command]
+fn forget_fact(fact: String) {
+    memory::forget_exact(&fact);
+}
+
+#[tauri::command]
 fn show_main_window(app: AppHandle) {
     show_main(&app);
 }
@@ -1112,6 +1138,8 @@ fn main() {
             read_attachment,
             show_main_window,
             reconnect_mcp,
+            list_memory,
+            forget_fact,
             forget_model,
             open_models_dir,
             answer,

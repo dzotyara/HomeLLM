@@ -260,11 +260,9 @@ fn system_info(_: &Value) -> Result<String> {
     let hw = crate::hardware::detect();
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
+    let now = chrono::Local::now().format("%H:%M, %d.%m.%Y");
     Ok(format!(
-        "unix-время {now} (UTC), ОС {}, память занята {} из {}",
+        "сейчас {now} (местное время), ОС {}, память занята {} из {}",
         hw.os,
         crate::hardware::gib(sys.used_memory()),
         crate::hardware::gib(sys.total_memory()),

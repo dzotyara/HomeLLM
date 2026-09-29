@@ -518,6 +518,25 @@ $("model-btn").onclick = () => {
 // ---------- settings dialog ----------
 const form = $("settings-form");
 
+async function showMemory() {
+  const facts = await invoke("list_memory");
+  const box = $("memory-list");
+  box.innerHTML = "";
+  if (!facts.length) box.textContent = "Пока ничего. Скажите в чате «запомни, что…».";
+  for (const fact of facts) {
+    const row = el("div", "memory-item");
+    const x = el("button", "", "✕");
+    x.type = "button";
+    x.title = "Забыть";
+    x.onclick = async () => {
+      await invoke("forget_fact", { fact });
+      showMemory();
+    };
+    row.append(el("span", "", fact), x);
+    box.append(row);
+  }
+}
+
 const THEMES = ["mint", "lime", "violet", "amber"];
 
 function applyTheme(theme) {
@@ -533,6 +552,7 @@ async function fillSettings() {
   form.elements.web_search.checked = !!s.web_search;
   form.elements.show_pet.checked = !s.hide_pet;
   form.elements.mcp_servers.value = s.mcp_servers || "";
+  showMemory();
   applyTheme(s.theme);
 }
 

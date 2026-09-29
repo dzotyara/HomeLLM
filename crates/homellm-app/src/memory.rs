@@ -43,6 +43,13 @@ pub fn forget(about: &str) -> Vec<String> {
     gone
 }
 
+/// Removes one fact exactly as stored (the settings list).
+pub fn forget_exact(fact: &str) {
+    let mut facts = load();
+    facts.retain(|f| f != fact);
+    save(&facts);
+}
+
 /// For the system prompt.
 pub fn context() -> String {
     let facts = load();

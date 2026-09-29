@@ -30,12 +30,27 @@ pub fn save(reminders: &[Reminder]) {
     let _ = std::fs::write(path, serde_json::to_string(reminders).unwrap_or_default());
 }
 
-/// Adds a reminder `minutes` from now; returns it.
-pub fn add(minutes: f64, text: &str) -> Reminder {
+/// «18:00» → the next moment it is 18:00 local time (today or tomorrow), unix seconds.
+pub fn at_time(hhmm: &str) -> Option<u64> {
+    use chrono::{Local, NaiveTime, TimeZone};
+    let time = NaiveTime::parse_from_str(hhmm.trim(), "%H:%M").ok()?;
+    let now = Local::now();
+    let mut day = now.date_naive();
+    if time <= now.time() {
+        day = day.succ_opt()?;
+    }
+    Local
+        .from_local_datetime(&day.and_time(time))
+        .earliest()
+        .map(|t| t.timestamp() as u64)
+}
+
+/// Adds a reminder due at `due` (unix seconds); returns it.
+pub fn add(due: u64, text: &str) -> Reminder {
     let mut all = load();
     let reminder = Reminder {
         id: all.iter().map(|r| r.id).max().unwrap_or(0) + 1,
-        due: crate::chats::now() + (minutes.max(0.0) * 60.0).round() as u64,
+        due,
         text: text.trim().to_string(),
     };
     all.push(reminder.clone());
@@ -51,6 +66,24 @@ pub fn take_due() -> Vec<Reminder> {
         save(&rest);
     }
     due
+}
+
+/// Removes reminders whose text contains the words; returns what was removed.
+pub fn cancel(about: &str) -> Vec<Reminder> {
+    let about = about.trim().to_lowercase();
+    let (gone, kept): (Vec<_>, Vec<_>) = load()
+        .into_iter()
+        .partition(|r| !about.is_empty() && r.text.to_lowercase().contains(&about));
+    save(&kept);
+    gone
+}
+
+/// "в 18:00 (через 2 ч 5 мин)" for the chat.
+pub fn when(due: u64) -> String {
+    let clock = chrono::DateTime::from_timestamp(due as i64, 0)
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default();
+    format!("в {clock} ({})", left(due))
 }
 
 /// "через 5 мин" / "через 1 ч 20 мин" for the chat.

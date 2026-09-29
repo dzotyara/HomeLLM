@@ -106,6 +106,10 @@ main.dragging::after {
   font: 13px ui-monospace, Consolas, monospace; padding: 8px 11px; border-radius: 9px; resize: vertical;
   border: 1px solid var(--line); background: var(--bg); color: var(--text); outline: 0;
 }
+.memory-box { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.memory-item { display: flex; align-items: center; gap: 8px; font-weight: 400; color: var(--text); }
+.memory-item span { flex: 1; }
+.memory-item button { width: 24px; height: 24px; border-radius: 6px; color: var(--muted); border: 1px solid var(--line); }
 .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 8px 4px; }
 .chat-item {
   display: flex; align-items: center; gap: 4px;

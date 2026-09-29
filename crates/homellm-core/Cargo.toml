@@ -17,6 +17,7 @@ cuda = ["llama-cpu", "llama-cpp-2/cuda"]
 [dependencies]
 anyhow.workspace = true
 arboard.workspace = true
+chrono.workspace = true
 async-trait.workspace = true
 directories.workspace = true
 encoding_rs = { version = "0.8", optional = true }

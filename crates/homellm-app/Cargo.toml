@@ -16,6 +16,7 @@ tauri-build = { version = "2.7", features = [] }
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+chrono.workspace = true
 directories.workspace = true
 pdf-extract = "0.12"
 homellm-core = { path = "../homellm-core", default-features = false, features = ["llama-cpu"] }

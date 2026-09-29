@@ -413,7 +413,7 @@ mod tests {
         .await;
         assert_eq!(answer, "Память в порядке.");
         assert_eq!(events[0], "call system_info");
-        assert!(events[1].starts_with("result unix-время"));
+        assert!(events[1].starts_with("result сейчас"));
         assert!(agent.history()[2].content.starts_with("<tool_response>"));
     }
 
