@@ -1,38 +1,28 @@
-:root {
-  --bg: #10140d;
-  --side: #141a10;
-  --panel: #1a2215;
-  --raised: #212b1a;
-  --line: #2b3723;
-  --text: #e6ecdd;
-  --muted: #8f9c82;
-  --accent: #86b83c;
-  --accent-hover: #97c94c;
-  --accent-ink: #13200a;
-  --accent-soft: #2a3a1a;
-  --user: #2c3d1c;
-  --warn: #d6a646;
-  --bad: #e0705e;
-  --pattern-opacity: 0.045;
+/* Themes: "mint" is the default; the others are picked in the settings. */
+:root, :root[data-theme="mint"] {
+  --bg: #0f1413; --side: #121917; --panel: #151d1a; --raised: #1a2421; --line: #22302b;
+  --text: #e4ebe8; --muted: #85968f; --user: #1c2a25;
+  --accent: #5fd4a4; --accent-hover: #74dfb3; --accent-ink: #06231a; --accent-soft: #1a3a2f;
+  --warn: #e0b35c; --bad: #e8806e; --pattern-opacity: 0.05;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f3f6ee;
-    --side: #eaf0e0;
-    --panel: #ffffff;
-    --raised: #f7faf2;
-    --line: #d8e2ca;
-    --text: #1d2615;
-    --muted: #677558;
-    --accent: #5f8c22;
-    --accent-hover: #6f9d2f;
-    --accent-ink: #f4faea;
-    --accent-soft: #e2edd0;
-    --user: #dcebc6;
-    --warn: #9a6b0c;
-    --bad: #b33b2a;
-    --pattern-opacity: 0.06;
-  }
+:root[data-theme="lime"] {
+  --bg: #0e0f11; --side: #131417; --panel: #16181b; --raised: #1d1f23; --line: #24262b;
+  --text: #e8e8ea; --muted: #8a8d94; --user: #1d1f23;
+  --accent: #b8f36b; --accent-hover: #c8f88a; --accent-ink: #10140a; --accent-soft: #262e1b;
+}
+:root[data-theme="violet"] {
+  --bg: #0d0e14; --side: #12131b; --panel: #15161f; --raised: #1c1d2b; --line: #23253a;
+  --text: #e6e6f0; --muted: #8a8ca6; --user: #221f3d;
+  --accent: #8b7cf6; --accent-hover: #9d90f8; --accent-ink: #ffffff; --accent-soft: #26224a;
+}
+:root[data-theme="amber"] {
+  --bg: #121110; --side: #171615; --panel: #1a1917; --raised: #211f1c; --line: #2a2724;
+  --text: #ece8e2; --muted: #998f84; --user: #2a2219;
+  --accent: #e8a557; --accent-hover: #efb670; --accent-ink: #241505; --accent-soft: #3a2a17;
+}
+select {
+  font: inherit; font-weight: 400; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); outline: 0;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }

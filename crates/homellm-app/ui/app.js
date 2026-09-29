@@ -363,10 +363,22 @@ $("model-btn").onclick = () => {
 // ---------- settings dialog ----------
 const form = $("settings-form");
 
+const THEMES = ["mint", "lime", "violet", "amber"];
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = THEMES.includes(theme) ? theme : "mint";
+}
+
 async function fillSettings() {
   const s = await invoke("get_settings");
   for (const key of ["music_dir", "music_search", "models_dir"]) form.elements[key].value = s[key] || "";
+  form.elements.theme.value = THEMES.includes(s.theme) ? s.theme : "mint";
+  applyTheme(s.theme);
 }
+
+// Preview a theme as soon as it is picked; closing without saving puts the saved one back.
+form.elements.theme.addEventListener("change", () => applyTheme(form.elements.theme.value));
+$("settings-dialog").addEventListener("close", fillSettings);
 
 $("settings-btn").onclick = async () => {
   await fillSettings();
@@ -388,6 +400,7 @@ form.addEventListener("submit", async (e) => {
 });
 
 // ---------- start ----------
+fillSettings();
 showWelcome();
 showChats();
 showHardware();

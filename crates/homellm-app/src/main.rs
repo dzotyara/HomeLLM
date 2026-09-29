@@ -78,9 +78,9 @@ impl ToolHost for AppTools {
                    "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "download_model", "description": "Скачать модель из каталога по id (например qwen3-8b).", "parameters": id}),
             json!({"name": "switch_model", "description": "Переключиться на скачанную модель по id.", "parameters": id}),
-            json!({"name": "set_setting", "description": "Изменить настройку приложения.",
+            json!({"name": "set_setting", "description": "Изменить настройку приложения. theme: mint (ночь и мята), lime (графит и лайм), violet (полночь и фиалка), amber (тёплый янтарь).",
                    "parameters": {"type": "object", "properties": {
-                       "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir"]},
+                       "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir", "theme"]},
                        "value": {"type": "string"}}, "required": ["key", "value"]}}),
         ]
     }
@@ -153,6 +153,7 @@ impl ToolHost for AppTools {
                     "music_dir" => s.music_dir = value.clone(),
                     "music_search" => s.music_search = value.clone(),
                     "models_dir" => s.models_dir = value.clone(),
+                    "theme" => s.theme = value.clone(),
                     other => return Some(format!("нет настройки {other}")),
                 }
                 match settings::save(s) {

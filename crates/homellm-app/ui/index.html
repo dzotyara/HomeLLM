@@ -60,6 +60,12 @@
   <dialog id="settings-dialog" class="panel">
     <div class="panel-head"><h3>Настройки</h3><form method="dialog"><button class="icon-btn" aria-label="Закрыть">✕</button></form></div>
     <form id="settings-form">
+      <label>Тема<select name="theme">
+        <option value="mint">Ночь и мята</option>
+        <option value="lime">Графит и лайм</option>
+        <option value="violet">Полночь и фиалка</option>
+        <option value="amber">Тёплый графит и янтарь</option>
+      </select></label>
       <label>Папка с музыкой<input name="music_dir" placeholder="C:\Users\me\Music"><small>Сначала ищу песню здесь, потом на сайте ниже.</small></label>
       <label>Сайт для поиска музыки<input name="music_search" placeholder="https://music.yandex.ru/search?text="></label>
       <label>Папка для моделей<input name="models_dir" placeholder="по умолчанию — папка данных приложения"><small>Уже скачанные модели сами не переедут.</small></label>
