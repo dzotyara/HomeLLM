@@ -18,6 +18,9 @@ pub struct Settings {
     /// The search page for music; empty = Yandex Music.
     #[serde(default)]
     pub music_search: String,
+    /// The model the app starts with (catalog id).
+    #[serde(default)]
+    pub last_model: String,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

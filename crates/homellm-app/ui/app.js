@@ -2,16 +2,6 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
-// --- tabs ---
-document.querySelectorAll(".tab").forEach((tab) =>
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab, .page").forEach((el) => el.classList.remove("active"));
-    tab.classList.add("active");
-    $(tab.dataset.tab).classList.add("active");
-    if (tab.dataset.tab === "chat") $("input").focus();
-  }),
-);
-
 function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
@@ -19,130 +9,145 @@ function el(tag, cls, text) {
   return node;
 }
 
-// --- models ---
-let current = null;
-const downloading = new Set();
-
-async function showHardware() {
-  const hw = await invoke("hw_info");
-  const gpu = hw.gpu ? `${hw.gpu}, ${hw.vram}` : "не найдена — модели пойдут на процессоре";
-  $("hw").innerHTML = "";
-  $("hw").append(
-    "Память: ", el("b", "", hw.ram), ` · процессор: ${hw.cpu_threads} потоков · видеокарта: `, el("b", "", gpu),
-  );
+function icon(name, cls = "ico") {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", cls);
+  const use = document.createElementNS(ns, "use");
+  use.setAttribute("href", `#${name}`);
+  svg.append(use);
+  return svg;
 }
 
-async function showModels() {
-  const { models, dir } = await invoke("list_models");
-  current = await invoke("current");
-  $("models-dir").textContent = `Модели лежат в ${dir}`;
-  const list = $("model-list");
-  list.innerHTML = "";
-  for (const m of models) {
-    const card = el("div", "card model");
-    card.append(el("h4", "", m.name));
-    const badges = el("div", "badges");
-    if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
-    badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
-    if (!m.tools) badges.append(el("span", "badge", "без управления ПК"));
-    card.append(badges, el("div", "about", m.about));
-
-    const actions = el("div", "actions");
-    if (m.downloaded) {
-      const run = el("button", "", current === m.id ? "Запущена" : "Запустить");
-      run.disabled = current === m.id;
-      run.onclick = () => start(m, run);
-      actions.append(run);
-    } else if (downloading.has(m.id)) {
-      const bar = el("progress");
-      bar.id = `bar-${m.id}`;
-      bar.max = 1000;
-      actions.append(bar, el("span", "hint", "скачиваю…"));
-    } else {
-      const get = el("button", "secondary", "Скачать");
-      get.disabled = m.fit === "TooBig";
-      get.onclick = () => pull(m);
-      actions.append(get);
-    }
-    card.append(actions);
-    list.append(card);
-  }
+// ---------- tool-call markup ----------
+// Small models drop the <tool_call> tags, so a reply that starts as a JSON object is a call too.
+function stripThink(text) {
+  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
 }
 
-async function pull(m) {
-  downloading.add(m.id);
-  await showModels();
-  try {
-    await invoke("pull", { id: m.id });
-  } catch (e) {
-    alert(`Не скачалось: ${e}\nНажмите «Скачать» ещё раз — загрузка продолжится.`);
-  }
-  downloading.delete(m.id);
-  showModels();
-}
-
-listen("progress", ({ payload }) => {
-  const bar = $(`bar-${payload.id}`);
-  if (bar) bar.value = Math.floor((payload.done * 1000) / payload.total);
-});
-
-async function start(m, button) {
-  button.disabled = true;
-  button.textContent = "Загружаю…";
-  $("status").textContent = `Загружаю ${m.name}…`;
-  try {
-    const where = await invoke("load", { id: m.id });
-    $("status").textContent = `${m.name} · ${where}`;
-    document.querySelector('[data-tab="chat"]').click();
-  } catch (e) {
-    $("status").textContent = "Модель не выбрана";
-    alert(`Не запустилась: ${e}`);
-  }
-  showModels();
-}
-
-// --- chat ---
-let bubble = null; // the answer being streamed
-let raw = "";
-
-// Hide the model's thinking and tool calls while it streams. Small models drop the
-// <tool_call> tags, so a reply that starts as a JSON object is a call too.
 function visible(text) {
-  const shown = text
-    .replace(/<think>[\s\S]*?(<\/think>|$)/g, "")
-    .replace(/<tool_call>[\s\S]*$/, "")
-    .replace(/<\/tool_call>/g, "")
-    .trim();
+  const shown = stripThink(text).replace(/<tool_call>[\s\S]*$/, "").replace(/<\/tool_call>/g, "").trim();
   return shown.startsWith("{") ? "" : shown;
 }
 
-function add(cls, text) {
-  $("messages").querySelector(".empty")?.remove();
-  const node = el("div", cls, text);
-  $("messages").append(node);
-  node.scrollIntoView({ block: "end" });
-  return node;
+function callOf(text) {
+  const body = stripThink(text).replace(/^[\s\S]*<tool_call>/, "").trim();
+  if (!body.startsWith("{")) return null;
+  const name = body.match(/"name"\s*:\s*"([^"]+)"/);
+  const args = body.match(/"arguments"\s*:\s*(\{[^{}]*\})/);
+  return name ? `${name[1]} ${args ? args[1] : ""}` : null;
 }
 
-function newBubble() {
-  raw = "";
-  bubble = add("msg bot", "…");
+// ---------- tiny markdown: code blocks, inline code, bold ----------
+function escape(text) {
+  return text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
+function markdown(text) {
+  return escape(text)
+    .split(/```/)
+    .map((part, i) => {
+      if (i % 2) return `<pre><code>${part.replace(/^[\w+-]*\n/, "")}</code></pre>`;
+      return part
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => `<p>${p.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>")}</p>`)
+        .join("");
+    })
+    .join("");
+}
+
+// ---------- messages ----------
+const messages = $("messages");
+let bubble = null; // the answer being streamed
+let raw = "";
+let busy = false;
+
+function scrollDown() {
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function addMessage(who, text) {
+  messages.querySelector(".welcome")?.remove();
+  const row = el("div", `row-msg ${who}`);
+  const avatar = el("div", `avatar ${who === "user" ? "me" : ""}`);
+  if (who === "user") avatar.textContent = "Я";
+  else avatar.append(icon("logo", ""));
+  const body = el("div", "bubble");
+  if (who === "user") body.textContent = text;
+  else body.innerHTML = markdown(text);
+  row.append(avatar, body);
+  messages.append(row);
+  scrollDown();
+  return body;
+}
+
+function addAction(text, done) {
+  messages.querySelector(".welcome")?.remove();
+  const line = el("div", `action ${done ? "done" : ""}`);
+  line.append(el("span", "", `${done ? "✓" : "→"} ${text}`));
+  messages.append(line);
+  scrollDown();
+}
+
+const SUGGESTIONS = ["Включи что-нибудь из Кино", "Сделай громкость 30%", "Открой калькулятор", "Какие модели есть?", "Какое у меня железо?"];
+
+function showWelcome() {
+  messages.innerHTML = "";
+  const box = el("div", "welcome");
+  box.append(icon("logo", ""), el("h2", "", "Чем помочь?"));
+  box.append(el("p", "", "Я работаю на вашем компьютере: включаю музыку, меняю громкость, открываю программы и сайты. Можно просто поболтать."));
+  const chips = el("div", "suggestions");
+  for (const s of SUGGESTIONS) {
+    const b = el("button", "", s);
+    b.onclick = () => submit(s);
+    chips.append(b);
+  }
+  box.append(chips);
+  messages.append(box);
+}
+
+// A saved chat, as the model saw it: tool calls and results become action lines.
+function renderHistory(history) {
+  messages.innerHTML = "";
+  if (!history.length) return showWelcome();
+  history.forEach((m, i) => {
+    const next = history[i + 1];
+    if (m.role === "user") {
+      if (m.content.startsWith("<tool_response>")) {
+        addAction(m.content.replace(/<\/?tool_response>/g, "").trim(), true);
+      } else if (!m.content.startsWith("Ты не вызвал инструмент")) {
+        addMessage("user", m.content);
+      }
+    } else if (m.role === "assistant") {
+      if (next?.content.startsWith("Ты не вызвал инструмент")) return; // a claim we rejected
+      const call = callOf(m.content);
+      if (call) addAction(call, false);
+      else if (visible(m.content)) addMessage("bot", visible(m.content));
+    }
+  });
 }
 
 listen("token", ({ payload }) => {
-  if (!bubble) newBubble();
+  if (!bubble) {
+    raw = "";
+    bubble = addMessage("bot", "");
+    bubble.classList.add("typing");
+  }
   raw += payload;
-  bubble.textContent = visible(raw) || "…";
-  bubble.scrollIntoView({ block: "end" });
+  bubble.innerHTML = markdown(visible(raw));
+  scrollDown();
 });
 
 listen("tool", ({ payload }) => {
-  if (bubble && !visible(raw)) bubble.remove();
-  add("tool", `→ ${payload.name} ${JSON.stringify(payload.args)}`);
+  // Whatever streamed before a call is the call itself (or a claim the agent rejected).
+  bubble?.closest(".row-msg")?.remove();
   bubble = null;
+  addAction(`${payload.name} ${JSON.stringify(payload.args)}`, false);
 });
 
-listen("tool-result", ({ payload }) => add("tool", `← ${payload.result}`));
+listen("tool-result", ({ payload }) => addAction(payload.result, true));
 
 listen("confirm", ({ payload }) => {
   const dialog = $("confirm");
@@ -152,55 +157,250 @@ listen("confirm", ({ payload }) => {
   dialog.showModal();
 });
 
-$("composer").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const text = $("input").value.trim();
-  if (!text) return;
-  $("input").value = "";
+async function submit(text) {
+  text = text.trim();
+  if (!text || busy) return;
+  busy = true;
   $("send").disabled = true;
-  add("msg user", text);
-  newBubble();
+  $("input").value = "";
+  autosize();
+  addMessage("user", text);
+  bubble = null;
   try {
     const answer = await invoke("send", { text });
-    if (!bubble) newBubble();
-    bubble.textContent = answer;
+    if (!bubble) bubble = addMessage("bot", "");
+    bubble.innerHTML = markdown(answer);
   } catch (e) {
-    if (!bubble) newBubble();
+    if (!bubble) bubble = addMessage("bot", "");
     bubble.textContent = String(e);
     bubble.classList.add("error");
   }
+  bubble?.classList.remove("typing");
   bubble = null;
+  busy = false;
   $("send").disabled = false;
   $("input").focus();
+  scrollDown();
+}
+
+$("composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  submit($("input").value);
 });
 
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submit($("input").value);
+  }
+});
+
+function autosize() {
+  const input = $("input");
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+}
+$("input").addEventListener("input", autosize);
+
+// ---------- chats ----------
+async function showChats() {
+  const { chats, current } = await invoke("list_chats");
+  const list = $("chat-list");
+  list.innerHTML = "";
+  for (const chat of chats) {
+    const item = el("div", `chat-item ${chat.id === current ? "active" : ""}`);
+    const title = el("span", "title", chat.title);
+    const rename = el("button", "act");
+    rename.title = "Переименовать";
+    rename.append(icon("i-edit"));
+    const remove = el("button", "act");
+    remove.title = "Удалить";
+    remove.append(icon("i-trash"));
+    item.append(title, rename, remove);
+    item.onclick = () => openChat(chat.id);
+    rename.onclick = (e) => {
+      e.stopPropagation();
+      const input = el("input");
+      input.value = chat.title;
+      title.replaceWith(input);
+      input.focus();
+      input.select();
+      input.onclick = (ev) => ev.stopPropagation();
+      const done = async () => {
+        await invoke("rename_chat", { id: chat.id, title: input.value || chat.title });
+        showChats();
+      };
+      input.onblur = done;
+      input.onkeydown = (ev) => ev.key === "Enter" && input.blur();
+    };
+    remove.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Удалить чат «${chat.title}»?`)) return;
+      await invoke("delete_chat", { id: chat.id });
+      if (chat.id === current) showWelcome();
+      showChats();
+    };
+    list.append(item);
+  }
+}
+
+async function openChat(id) {
+  if (busy) return;
+  renderHistory(await invoke("open_chat", { id }));
+  showChats();
+}
+
 $("new-chat").onclick = async () => {
-  await invoke("reset");
-  $("messages").innerHTML = "";
-  $("messages").append(el("div", "empty", "Новый разговор."));
+  if (busy) return;
+  await invoke("new_chat");
+  showWelcome();
+  showChats();
+  $("input").focus();
 };
 
-// --- settings ---
+listen("chats-changed", showChats);
+
+// ---------- model, hardware ----------
+function showModel(info) {
+  $("model-name").textContent = info ? `${info.name} · ${info.where}` : "Модель не выбрана";
+  document.querySelector(".model-btn .dot").classList.toggle("on", !!info);
+}
+
+listen("model-changed", ({ payload }) => {
+  showModel(payload);
+  if ($("models-dialog").open) showModels();
+});
+
+async function showHardware() {
+  const hw = await invoke("hw_info");
+  $("gpu-name").textContent = hw.gpu ? `${hw.gpu.replace(/\s*\(.*\)$/, "")} · ${hw.vram}` : "без видеокарты";
+  $("hw").innerHTML = "";
+  $("hw").append("Память ", el("b", "", hw.ram), ` · процессор ${hw.cpu_threads} потоков · видеокарта `, el("b", "", hw.gpu ? `${hw.gpu}, ${hw.vram}` : "не найдена"));
+}
+
+// ---------- models dialog ----------
+const downloading = new Map(); // id -> permille
+
+async function showModels() {
+  const { models, dir } = await invoke("list_models");
+  const current = await invoke("current");
+  $("models-dir").textContent = `Модели лежат в ${dir}`;
+  const list = $("model-list");
+  list.innerHTML = "";
+  for (const m of models) {
+    const isCurrent = current?.id === m.id;
+    const card = el("div", `model ${isCurrent ? "current" : ""}`);
+    card.append(el("h4", "", m.name));
+    const badges = el("div", "badges");
+    if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
+    badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
+    if (!m.tools) badges.append(el("span", "badge", "без управления ПК"));
+    card.append(badges, el("div", "about", m.about));
+    const actions = el("div", "actions");
+    if (m.downloaded) {
+      const run = el("button", isCurrent ? "" : "primary", isCurrent ? "Работает" : "Запустить");
+      run.disabled = isCurrent;
+      run.onclick = () => start(m, run);
+      actions.append(run);
+    } else if (downloading.has(m.id)) {
+      const bar = el("progress");
+      bar.id = `bar-${m.id}`;
+      bar.max = 1000;
+      bar.value = downloading.get(m.id);
+      actions.append(bar, el("span", "hint", "скачиваю…"));
+    } else {
+      const get = el("button", "", "Скачать");
+      get.disabled = m.fit === "TooBig";
+      get.onclick = () => {
+        downloading.set(m.id, 0);
+        showModels();
+        invoke("pull", { id: m.id }).catch(() => {});
+      };
+      actions.append(get);
+    }
+    card.append(actions);
+    list.append(card);
+  }
+}
+
+async function start(m, button) {
+  button.disabled = true;
+  button.textContent = "Загружаю…";
+  $("model-name").textContent = `Загружаю ${m.name}…`;
+  try {
+    await invoke("load", { id: m.id });
+    $("models-dialog").close();
+  } catch (e) {
+    showModel(await invoke("current"));
+    alert(`Не запустилась: ${e}`);
+    showModels();
+  }
+}
+
+listen("progress", ({ payload }) => {
+  const permille = Math.floor((payload.done * 1000) / payload.total);
+  downloading.set(payload.id, permille);
+  const bar = $(`bar-${payload.id}`);
+  if (bar) bar.value = permille;
+  else if ($("models-dialog").open && !bar) showModels();
+  const chip = $("download-chip");
+  chip.classList.remove("hidden");
+  chip.textContent = `Скачиваю ${payload.id}: ${Math.floor(permille / 10)}%`;
+});
+
+listen("download-done", ({ payload }) => {
+  downloading.delete(payload.id);
+  if (!downloading.size) $("download-chip").classList.add("hidden");
+  if (payload.error) alert(`Не скачалось: ${payload.error}\nПопробуйте ещё раз — загрузка продолжится.`);
+  if ($("models-dialog").open) showModels();
+});
+
+$("model-btn").onclick = () => {
+  showModels();
+  $("models-dialog").showModal();
+};
+
+// ---------- settings dialog ----------
 const form = $("settings-form");
 
-async function showSettings() {
+async function fillSettings() {
   const s = await invoke("get_settings");
   for (const key of ["music_dir", "music_search", "models_dir"]) form.elements[key].value = s[key] || "";
 }
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const value = Object.fromEntries(new FormData(form));
+$("settings-btn").onclick = async () => {
+  await fillSettings();
+  $("settings-dialog").showModal();
+};
+
+listen("settings-changed", fillSettings);
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const value = { ...Object.fromEntries(new FormData(form)), last_model: "" };
   try {
     await invoke("save_settings", { value });
     $("saved").textContent = "Сохранено";
-    showModels();
-  } catch (e) {
-    $("saved").textContent = `Ошибка: ${e}`;
+  } catch (err) {
+    $("saved").textContent = `Ошибка: ${err}`;
   }
   setTimeout(() => ($("saved").textContent = ""), 2500);
 });
 
+// ---------- start ----------
+showWelcome();
+showChats();
 showHardware();
-showModels();
-showSettings();
+(async () => {
+  $("model-name").textContent = "Запускаю модель…";
+  try {
+    const info = await invoke("auto_load");
+    showModel(info);
+    if (!info) {
+      showModels();
+      $("models-dialog").showModal();
+    }
+  } catch (e) {
+    showModel(null);
+  }
+})();

@@ -42,6 +42,16 @@ pub fn tools() -> Vec<Tool> {
             run: open_app,
         },
         Tool {
+            name: "set_volume",
+            description: "Выставить громкость системы в процентах (0–100).",
+            parameters: || {
+                json!({"type": "object", "properties": {"percent": {"type": "integer", "minimum": 0, "maximum": 100}},
+                    "required": ["percent"]})
+            },
+            risk: Risk::Safe,
+            run: set_volume,
+        },
+        Tool {
             name: "system_info",
             description: "Текущие дата и время, ОС, загрузка памяти.",
             parameters: || json!({"type": "object", "properties": {}}),
@@ -169,6 +179,44 @@ fn open_app(args: &Value) -> Result<String> {
         bail!("program {name} not found");
     }
     Ok(format!("запущено: {name}"))
+}
+
+fn set_volume(args: &Value) -> Result<String> {
+    let percent = args["percent"]
+        .as_u64()
+        .or_else(|| {
+            args["percent"]
+                .as_str()
+                .and_then(|s| s.trim_end_matches('%').parse().ok())
+        })
+        .ok_or_else(|| anyhow!("missing argument `percent`"))?
+        .min(100);
+    #[cfg(windows)]
+    {
+        // Windows moves the volume by 2% per key press: go to zero, then step up.
+        for _ in 0..50 {
+            press(Key::VolumeDown)?;
+        }
+        for _ in 0..percent.div_ceil(2) {
+            press(Key::VolumeUp)?;
+        }
+    }
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("osascript")
+        .args(["-e", &format!("set volume output volume {percent}")])
+        .status()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let wpctl = std::process::Command::new("wpctl")
+            .args(["set-volume", "@DEFAULT_AUDIO_SINK@", &format!("{percent}%")])
+            .status();
+        if !wpctl.is_ok_and(|s| s.success()) {
+            std::process::Command::new("pactl")
+                .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{percent}%")])
+                .status()?;
+        }
+    }
+    Ok(format!("громкость {percent}%"))
 }
 
 fn system_info(_: &Value) -> Result<String> {

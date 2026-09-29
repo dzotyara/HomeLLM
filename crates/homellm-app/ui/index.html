@@ -7,59 +7,71 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <nav>
-    <div class="brand">HomeLLM</div>
-    <button class="tab active" data-tab="models">Модели</button>
-    <button class="tab" data-tab="chat">Чат</button>
-    <button class="tab" data-tab="settings">Настройки</button>
-    <div class="status" id="status">Модель не выбрана</div>
-  </nav>
+  <svg width="0" height="0" style="position:absolute">
+    <symbol id="logo" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="9" fill="var(--accent)"/>
+      <path d="M8 15.5 16 8.5l8 7V24a1 1 0 0 1-1 1h-4.5v-5.5h-5V25H9a1 1 0 0 1-1-1z" fill="var(--accent-ink)"/>
+      <circle cx="23.5" cy="9.5" r="3.2" fill="var(--accent-ink)"/>
+      <circle cx="23.5" cy="9.5" r="1.4" fill="var(--accent)"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="1.8" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="1.8" fill="none"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></g></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></symbol>
+  </svg>
 
-  <main>
-    <section id="models" class="page active">
-      <div class="card hw" id="hw">Смотрю железо…</div>
-      <div id="model-list"></div>
-      <p class="hint" id="models-dir"></p>
-    </section>
+  <header>
+    <div class="brand"><svg class="logo"><use href="#logo"/></svg><span>Home<b>LLM</b></span></div>
+    <button id="model-btn" class="model-btn"><span class="dot"></span><span id="model-name">Модель не выбрана</span><svg class="ico"><use href="#i-down"/></svg></button>
+    <div class="header-right">
+      <span id="download-chip" class="chip hidden"></span>
+      <span id="gpu-chip" class="chip"><svg class="ico"><use href="#i-chip"/></svg><span id="gpu-name">…</span></span>
+      <button id="settings-btn" class="icon-btn" title="Настройки"><svg class="ico"><use href="#i-gear"/></svg></button>
+    </div>
+  </header>
 
-    <section id="chat" class="page">
-      <div id="messages">
-        <div class="empty">Попросите, например: «включи что-нибудь из Кино», «сделай потише», «открой калькулятор».</div>
-      </div>
+  <div class="body">
+    <aside>
+      <button id="new-chat" class="new-chat"><svg class="ico"><use href="#i-plus"/></svg>Новый чат</button>
+      <div class="side-label">Чаты</div>
+      <div id="chat-list"></div>
+    </aside>
+
+    <main>
+      <div id="messages"></div>
       <form id="composer">
-        <input id="input" autocomplete="off" placeholder="Напишите сообщение…">
-        <button type="submit" id="send">Отправить</button>
-        <button type="button" id="new-chat" class="secondary" title="Начать заново">Новый</button>
+        <textarea id="input" rows="1" placeholder="Напишите сообщение…"></textarea>
+        <button type="submit" id="send" class="send" title="Отправить"><svg class="ico"><use href="#i-send"/></svg></button>
       </form>
-    </section>
+      <div class="hint-line">Enter — отправить, Shift+Enter — новая строка. Модели работают на вашем компьютере.</div>
+    </main>
+  </div>
 
-    <section id="settings" class="page">
-      <form id="settings-form" class="card">
-        <label>Папка с музыкой
-          <input name="music_dir" placeholder="например C:\Users\me\Music">
-          <small>Сначала ищу песню здесь, потом — на сайте ниже.</small>
-        </label>
-        <label>Сайт для поиска музыки
-          <input name="music_search" placeholder="https://music.yandex.ru/search?text=">
-        </label>
-        <label>Папка для моделей
-          <input name="models_dir" placeholder="по умолчанию — папка данных приложения">
-          <small>Уже скачанные модели сами не переедут.</small>
-        </label>
-        <button type="submit">Сохранить</button>
-        <span id="saved" class="hint"></span>
-      </form>
-    </section>
-  </main>
+  <dialog id="models-dialog" class="panel">
+    <div class="panel-head"><h3>Модели</h3><form method="dialog"><button class="icon-btn" aria-label="Закрыть">✕</button></form></div>
+    <div id="hw" class="hw"></div>
+    <div id="model-list"></div>
+    <p class="hint" id="models-dir"></p>
+  </dialog>
 
-  <dialog id="confirm">
+  <dialog id="settings-dialog" class="panel">
+    <div class="panel-head"><h3>Настройки</h3><form method="dialog"><button class="icon-btn" aria-label="Закрыть">✕</button></form></div>
+    <form id="settings-form">
+      <label>Папка с музыкой<input name="music_dir" placeholder="C:\Users\me\Music"><small>Сначала ищу песню здесь, потом на сайте ниже.</small></label>
+      <label>Сайт для поиска музыки<input name="music_search" placeholder="https://music.yandex.ru/search?text="></label>
+      <label>Папка для моделей<input name="models_dir" placeholder="по умолчанию — папка данных приложения"><small>Уже скачанные модели сами не переедут.</small></label>
+      <div class="row"><span id="saved" class="hint"></span><button type="submit" class="primary">Сохранить</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm" class="panel small">
     <form method="dialog">
       <h3>Разрешить действие?</h3>
-      <p id="confirm-text"></p>
-      <div class="row">
-        <button value="no" class="secondary">Нет</button>
-        <button value="yes">Разрешить</button>
-      </div>
+      <p id="confirm-text" class="mono"></p>
+      <div class="row"><button value="no">Нет</button><button value="yes" class="primary">Разрешить</button></div>
     </form>
   </dialog>
 

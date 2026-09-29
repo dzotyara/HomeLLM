@@ -3,7 +3,7 @@
 //! format, understood by most small models); we run the tool, hand back the
 //! result and let the model go on. One text protocol for every engine.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -22,6 +22,16 @@ pub trait Confirm: Send + Sync {
     async fn confirm(&self, tool: &str, args: &Value) -> bool;
 }
 
+/// Tools the shell adds on top of the PC ones: the app's own controls (models,
+/// settings), so everything in the window can also be asked for in the chat.
+#[async_trait]
+pub trait ToolHost: Send + Sync {
+    /// `{"name", "description", "parameters"}` for the prompt.
+    fn specs(&self) -> Vec<Value>;
+    /// `None` when the tool is not one of ours.
+    async fn call(&self, name: &str, args: &Value) -> Option<String>;
+}
+
 /// What happened during one turn, for the UI.
 pub enum Event {
     ToolCall { name: String, args: Value },
@@ -30,16 +40,33 @@ pub enum Event {
 
 pub struct Agent {
     engine: Box<dyn Engine>,
+    host: Option<Arc<dyn ToolHost>>,
     history: Vec<Message>,
 }
 
 impl Agent {
     pub fn new(engine: Box<dyn Engine>, system_suffix: &str) -> Self {
-        let system = format!("{}\n{}", system_prompt(), system_suffix)
+        Self::with_host(engine, system_suffix, None)
+    }
+
+    pub fn with_host(
+        engine: Box<dyn Engine>,
+        system_suffix: &str,
+        host: Option<Arc<dyn ToolHost>>,
+    ) -> Self {
+        let mut specs: Vec<Value> = tools::all()
+            .iter()
+            .map(|t| serde_json::json!({"name": t.name, "description": t.description, "parameters": (t.parameters)()}))
+            .collect();
+        if let Some(host) = &host {
+            specs.extend(host.specs());
+        }
+        let system = format!("{}\n{}", system_prompt(&specs), system_suffix)
             .trim()
             .to_string();
         Self {
             engine,
+            host,
             history: vec![Message::new("system", system)],
         }
     }
@@ -47,6 +74,18 @@ impl Agent {
     /// Starts a new conversation: keeps only the system prompt.
     pub fn reset(&mut self) {
         self.history.truncate(1);
+    }
+
+    /// The conversation without the system prompt, to save a chat.
+    pub fn history(&self) -> &[Message] {
+        &self.history[1..]
+    }
+
+    /// Continues a saved chat.
+    pub fn set_history(&mut self, messages: Vec<Message>) {
+        self.history.truncate(1);
+        self.history
+            .extend(messages.into_iter().filter(|m| m.role != "system"));
     }
 
     pub fn engine_name(&self) -> String {
@@ -62,18 +101,31 @@ impl Agent {
         mut on_event: impl FnMut(Event),
     ) -> Result<String> {
         self.history.push(Message::new("user", text));
+        let mut used_tool = false;
+        let mut nudged = false;
         for _ in 0..MAX_STEPS {
             let reply = self.engine.complete(&self.history, tokens.clone()).await?;
             let reply = strip_think(&reply);
             self.history.push(Message::new("assistant", reply.clone()));
             let Some((name, args)) = parse_call(&reply) else {
+                // Small models report actions they never took ("звук добавлен"): ask once more.
+                if !used_tool && !nudged && claims_action(&reply) {
+                    nudged = true;
+                    self.history.push(Message::new(
+                        "user",
+                        "Ты не вызвал инструмент, значит ничего не сделано. Вызови нужный инструмент \
+                         или честно скажи, что не можешь.",
+                    ));
+                    continue;
+                }
                 return Ok(reply);
             };
+            used_tool = true;
             on_event(Event::ToolCall {
                 name: name.clone(),
                 args: args.clone(),
             });
-            let result = run_tool(&name, &args, confirm).await;
+            let result = self.run_tool(&name, &args, confirm).await;
             on_event(Event::ToolResult {
                 name: name.clone(),
                 result: result.clone(),
@@ -86,37 +138,48 @@ impl Agent {
         }
         Ok("Не получилось за несколько шагов, попробуй сформулировать иначе.".into())
     }
+
+    async fn run_tool(&self, name: &str, args: &Value, confirm: &dyn Confirm) -> String {
+        let Some(tool) = tools::find(name) else {
+            if let Some(host) = &self.host
+                && let Some(out) = host.call(name, args).await
+            {
+                return out;
+            }
+            return format!("ошибка: нет инструмента {name}");
+        };
+        if tool.risk != Risk::Safe && !confirm.confirm(name, args).await {
+            return "пользователь запретил это действие".into();
+        }
+        match (tool.run)(args) {
+            Ok(out) => out,
+            Err(e) => format!("ошибка: {e}"),
+        }
+    }
 }
 
-async fn run_tool(name: &str, args: &Value, confirm: &dyn Confirm) -> String {
-    let Some(tool) = tools::find(name) else {
-        return format!("ошибка: нет инструмента {name}");
-    };
-    if tool.risk != Risk::Safe && !confirm.confirm(name, args).await {
-        return "пользователь запретил это действие".into();
-    }
-    match (tool.run)(args) {
-        Ok(out) => out,
-        Err(e) => format!("ошибка: {e}"),
-    }
+/// "Сделал", "включил", "готово"... — the reply says something was done.
+fn claims_action(text: &str) -> bool {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)\b(сдела(л|ла|но|на)|(вы)?включ(ил|ила|ен|ена|ено)|запуст(ил|ила)|запущен\w*|откры(л|ла|т|та|то)|(до|у|при)бав(ил|ила|лен|лена|лено)|(увелич|уменьш)(ил|ила|ен|ена|ено)|(по|у)став(ил|ила|лен|лена|лено)|установ(ил|ила|лен|лена|лено)|переключ(ил|ила|ен|ено)|готово)\b",
+        )
+        .unwrap()
+    });
+    re.is_match(text)
 }
 
-fn system_prompt() -> String {
-    let specs: Vec<String> = tools::all()
-        .iter()
-        .map(|t| {
-            serde_json::json!({"name": t.name, "description": t.description, "parameters": (t.parameters)()})
-                .to_string()
-        })
-        .collect();
+fn system_prompt(specs: &[Value]) -> String {
+    let specs: Vec<String> = specs.iter().map(Value::to_string).collect();
     format!(
         "Ты — HomeLLM, голосовой помощник на компьютере пользователя. Отвечай по-русски, коротко.\n\
-         Ты можешь управлять компьютером через инструменты:\n<tools>\n{}\n</tools>\n\
+         Ты можешь управлять компьютером и самим приложением через инструменты:\n<tools>\n{}\n</tools>\n\
          Чтобы вызвать инструмент, ответь ТОЛЬКО так, без другого текста:\n\
          <tool_call>\n{{\"name\": \"имя\", \"arguments\": {{...}}}}\n</tool_call>\n\
          Результат придёт в <tool_response>. После него коротко скажи пользователю, что сделано.\n\
-         Вызывай инструмент, только когда просят что-то сделать на компьютере. На остальное \
-         (поболтать, пошутить, «мяукни») просто ответь текстом.\n\
+         Вызывай инструмент, только когда просят что-то сделать на компьютере или в приложении. \
+         На остальное (поболтать, пошутить, написать код, «мяукни») просто ответь текстом.\n\
          Никогда не говори, что что-то сделал, если не получил об этом <tool_response>.",
         specs.join("\n")
     )
@@ -176,6 +239,13 @@ mod tests {
         let (name, args) = parse_call(text).unwrap();
         assert_eq!(name, "open_app");
         assert_eq!(args["name"], "notepad");
+    }
+
+    #[test]
+    fn spots_claimed_actions() {
+        assert!(claims_action("Звук добавлен."));
+        assert!(claims_action("Готово, громкость 30%."));
+        assert!(!claims_action("Мяу! Чем ещё помочь?"));
     }
 
     #[test]

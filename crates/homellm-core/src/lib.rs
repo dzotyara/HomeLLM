@@ -19,7 +19,12 @@ pub fn models_dir() -> PathBuf {
     if let Some(dir) = settings::value("HOMELLM_MODELS_DIR", |s| s.models_dir.clone()) {
         return PathBuf::from(dir);
     }
+    data_dir().join("models")
+}
+
+/// The app's data folder: models (by default), chats.
+pub fn data_dir() -> PathBuf {
     directories::ProjectDirs::from("", "", "HomeLLM")
-        .map(|d| d.data_dir().join("models"))
-        .unwrap_or_else(|| PathBuf::from("models"))
+        .map(|d| d.data_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
 }
