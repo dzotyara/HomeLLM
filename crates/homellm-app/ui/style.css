@@ -90,6 +90,18 @@ aside {
 .add-model button { padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); white-space: nowrap; }
 #settings-form label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; }
 #settings-form label.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+#attachments { display: flex; flex-wrap: wrap; gap: 6px; width: min(820px, calc(100% - 56px)); margin: 0 auto 6px; position: relative; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  padding: 4px 6px 4px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel);
+}
+.file-chip button { width: 20px; height: 20px; border-radius: 50%; color: var(--muted); }
+.file-chip button:hover { background: var(--line); color: var(--text); }
+.user .file-chip { background: transparent; border-color: var(--accent); margin: 2px 0; }
+main.dragging::after {
+  content: "Отпустите файл — добавлю в сообщение"; position: absolute; inset: 12px; display: grid; place-items: center;
+  border: 2px dashed var(--accent); border-radius: 16px; background: rgb(0 0 0 / .35); color: var(--accent); font-size: 16px;
+}
 .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 8px 4px; }
 .chat-item {
   display: flex; align-items: center; gap: 4px;

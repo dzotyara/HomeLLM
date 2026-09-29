@@ -68,6 +68,21 @@ function scrollDown() {
   messages.scrollTop = messages.scrollHeight;
 }
 
+// Files travel inside the message as <<файл: name>> … <</файл>> blocks: the model reads
+// them, the bubble shows a chip instead.
+const FILE_BLOCK = /\n*<<файл: ([^>]+)>>\n[\s\S]*?\n<<\/файл>>/g;
+
+function userBody(text) {
+  const box = document.createDocumentFragment();
+  const names = [...text.matchAll(FILE_BLOCK)].map((m) => m[1]);
+  const plain = text.replace(FILE_BLOCK, "").trim();
+  if (plain) box.append(document.createTextNode(plain));
+  for (const name of names) {
+    box.append(document.createElement("br"), el("span", "file-chip", `📎 ${name}`));
+  }
+  return box;
+}
+
 function addMessage(who, text) {
   messages.querySelector(".welcome")?.remove();
   const row = el("div", `row-msg ${who}`);
@@ -75,7 +90,7 @@ function addMessage(who, text) {
   if (who === "user") avatar.textContent = "Я";
   else avatar.append(icon("logo", ""));
   const body = el("div", "bubble");
-  if (who === "user") body.textContent = text;
+  if (who === "user") body.append(userBody(text));
   else body.innerHTML = markdown(text);
   row.append(avatar, body);
   messages.append(row);
@@ -170,8 +185,48 @@ listen("confirm", ({ payload }) => {
   dialog.showModal();
 });
 
+let attachments = []; // [{name, text}]
+
+function showAttachments() {
+  const bar = $("attachments");
+  bar.innerHTML = "";
+  attachments.forEach((a, i) => {
+    const chip = el("span", "file-chip", `📎 ${a.name}${a.truncated ? " (обрезан)" : ""}`);
+    const x = el("button", "", "✕");
+    x.type = "button";
+    x.title = "Убрать";
+    x.onclick = () => {
+      attachments.splice(i, 1);
+      showAttachments();
+    };
+    chip.append(x);
+    bar.append(chip);
+  });
+}
+
+listen("tauri://drag-enter", () => document.querySelector("main").classList.add("dragging"));
+listen("tauri://drag-leave", () => document.querySelector("main").classList.remove("dragging"));
+listen("tauri://drag-drop", async ({ payload }) => {
+  document.querySelector("main").classList.remove("dragging");
+  for (const path of payload.paths || []) {
+    try {
+      attachments.push(await invoke("read_attachment", { path }));
+    } catch (e) {
+      alert(e);
+    }
+  }
+  showAttachments();
+  $("input").focus();
+});
+
 async function submit(text) {
   text = text.trim();
+  if (attachments.length) {
+    const files = attachments.map((a) => `<<файл: ${a.name}>>\n${a.text}\n<</файл>>`).join("\n\n");
+    text = `${text || "Что в этом файле?"}\n\n${files}`;
+    attachments = [];
+    showAttachments();
+  }
   if (!text || busy) return;
   busy = true;
   $("send").disabled = true;

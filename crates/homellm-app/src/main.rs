@@ -640,6 +640,48 @@ async fn delete_chat(state: State<'_, App>, id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// The context is ~8k tokens: a file gets about a third of it.
+const ATTACHMENT_LIMIT: usize = 6000;
+
+/// Reads a file dropped into the chat: text-like files as is, PDF through a text extractor.
+#[tauri::command]
+fn read_attachment(path: String) -> Result<Value, String> {
+    let file = std::path::Path::new(&path);
+    let name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let ext = file
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let text = match ext.as_str() {
+        "pdf" => {
+            pdf_extract::extract_text(file).map_err(|e| format!("не удалось прочитать PDF: {e}"))?
+        }
+        "gguf" | "exe" | "dll" | "zip" | "7z" | "rar" | "png" | "jpg" | "jpeg" | "gif" | "webp"
+        | "mp3" | "mp4" | "docx" | "xlsx" => {
+            return Err(format!(
+                "{name}: такие файлы пока не читаю — только текст и PDF"
+            ));
+        }
+        _ => {
+            let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
+            if bytes.iter().take(4096).any(|b| *b == 0) {
+                return Err(format!("{name}: это не текстовый файл"));
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+    };
+    let text = text.trim();
+    let mut cut: String = text.chars().take(ATTACHMENT_LIMIT).collect();
+    let truncated = text.chars().count() > ATTACHMENT_LIMIT;
+    if truncated {
+        cut.push_str("\n…(дальше обрезано)");
+    }
+    Ok(json!({"name": name, "text": cut, "truncated": truncated}))
+}
+
 /// Adds a .gguf file from anywhere on disk as the user's own model.
 #[tauri::command]
 fn add_model(path: String) -> Result<(), String> {
@@ -913,6 +955,7 @@ fn main() {
             delete_chat,
             export_chat,
             add_model,
+            read_attachment,
             forget_model,
             open_models_dir,
             answer,
