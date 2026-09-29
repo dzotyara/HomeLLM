@@ -401,6 +401,7 @@ fn hw_info() -> Value {
 fn list_models(state: State<'_, App>) -> Value {
     let downloading = state.downloading.lock().unwrap().clone();
     let hw = hardware::detect();
+    let speeds = settings::get().speeds;
     let recommended = catalog::recommend(&hw).map(|m| m.id);
     let models: Vec<Value> = catalog::all()
         .into_iter()
@@ -409,6 +410,7 @@ fn list_models(state: State<'_, App>) -> Value {
             json!({
                 "id": m.id, "kind": m.kind, "name": m.name, "size": gib(m.size), "about": m.about, "tools": m.tools,
                 "fit": format!("{fit:?}"), "fit_label": fit.label(), "downloaded": m.is_downloaded(),
+                "speed": speeds.get(&m.id).map(|s| s.round()),
                 "bytes": m.size, "partial": m.partial(), "downloading": downloading.contains(&m.id),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })
@@ -475,6 +477,7 @@ async fn send(app: AppHandle, state: State<'_, App>, text: String) -> Result<Str
         .await;
     let _ = forward.await;
     save_chat(&state, &text, agent.history().to_vec());
+    record_speed(&app, &state);
     drop(guard);
     let _ = app.emit("chats-changed", ());
 
@@ -483,6 +486,30 @@ async fn send(app: AppHandle, state: State<'_, App>, text: String) -> Result<Str
         load_model(&app, &id).await?;
     }
     answer.map_err(err_text)
+}
+
+/// Remembers how fast the running model answered on this PC (a running average).
+fn record_speed(app: &AppHandle, state: &App) {
+    let Some(speed) = homellm_core::engine::llama::last_speed() else {
+        return;
+    };
+    let Some(id) = state
+        .model
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|m| m["id"].as_str().map(String::from))
+    else {
+        return;
+    };
+    let mut s = settings::get();
+    let avg = s
+        .speeds
+        .get(&id)
+        .map_or(speed, |old| old * 0.7 + speed * 0.3);
+    s.speeds.insert(id.clone(), avg);
+    let _ = settings::save(s);
+    let _ = app.emit("speed", json!({"id": id, "speed": avg.round()}));
 }
 
 /// Stores the conversation in the open chat, creating one on the first message.
@@ -764,6 +791,7 @@ fn save_settings(app: AppHandle, value: Settings) -> Result<(), String> {
     s.last_model = saved.last_model;
     s.downloads = saved.downloads;
     s.custom_models = saved.custom_models;
+    s.speeds = saved.speeds;
     settings::save(s).map_err(err_text)
 }
 

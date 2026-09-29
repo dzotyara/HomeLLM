@@ -18,6 +18,13 @@ use super::{Engine, Message, TokenSink};
 const MAX_NEW_TOKENS: usize = 1024;
 const CHUNK: usize = 512;
 
+/// Generation speed of the last answer, tokens per second.
+static LAST_SPEED: std::sync::Mutex<Option<f32>> = std::sync::Mutex::new(None);
+
+pub fn last_speed() -> Option<f32> {
+    *LAST_SPEED.lock().unwrap()
+}
+
 fn backend() -> &'static LlamaBackend {
     static BACKEND: OnceLock<LlamaBackend> = OnceLock::new();
     BACKEND.get_or_init(|| LlamaBackend::init().expect("llama.cpp backend"))
@@ -140,7 +147,10 @@ fn generate(
     let mut decoder = encoding_rs::UTF_8.new_decoder();
     let mut text = String::new();
     let mut pos = prompt_tokens.len() as i32;
+    let started = std::time::Instant::now();
+    let mut generated = 0usize;
     for _ in 0..MAX_NEW_TOKENS {
+        generated += 1;
         let token = sampler.sample(&ctx, batch.n_tokens() - 1);
         sampler.accept(token);
         if model.is_eog_token(token) {
@@ -160,6 +170,11 @@ fn generate(
         batch.add(token, pos, &[0], true)?;
         pos += 1;
         ctx.decode(&mut batch)?;
+    }
+    // Short replies (a tool call) say little about speed: count from 8 tokens up.
+    let secs = started.elapsed().as_secs_f32();
+    if generated >= 8 && secs > 0.0 {
+        *LAST_SPEED.lock().unwrap() = Some(generated as f32 / secs);
     }
     Ok(text)
 }

@@ -302,12 +302,27 @@ listen("reminder", ({ payload }) => addMessage("bot", `⏰ Напоминани�
 listen("focus-input", () => $("input").focus());
 
 // ---------- model, hardware ----------
+let speed = null;
+
 function showModel(info) {
-  $("model-name").textContent = info ? `${info.name} · ${info.where}` : "Модель не выбрана";
+  if (info?.id !== currentModel) speed = null;
+  currentModel = info?.id ?? null;
+  const tail = speed ? ` · ${speed} ток/с` : "";
+  $("model-name").textContent = info ? `${info.name} · ${info.where}${tail}` : "Модель не выбрана";
   document.querySelector(".model-btn .dot").classList.toggle("on", !!info);
 }
 
+let currentModel = null;
+let modelInfo = null;
+
+listen("speed", ({ payload }) => {
+  if (payload.id !== currentModel) return;
+  speed = payload.speed;
+  showModel(modelInfo);
+});
+
 listen("model-changed", ({ payload }) => {
+  modelInfo = payload;
   showModel(payload);
   if ($("models-dialog").open) showModels();
 });
@@ -341,6 +356,7 @@ async function showModels() {
     const badges = el("div", "badges");
     if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
     badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
+    if (m.speed) badges.append(el("span", "badge", `~${m.speed} ток/с у вас`));
     if (!m.tools && m.kind !== "voice") badges.append(el("span", "badge", "без управления ПК"));
     card.append(badges, el("div", "about", m.about));
     const actions = el("div", "actions");
@@ -487,6 +503,7 @@ showHardware();
   $("model-name").textContent = "Запускаю модель…";
   try {
     const info = await invoke("auto_load");
+    modelInfo = info;
     showModel(info);
     if (!info) {
       showModels();

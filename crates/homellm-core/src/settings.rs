@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::sync::RwLock;
 
 use anyhow::Result;
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -36,6 +38,9 @@ pub struct Settings {
     /// Closing the window quits; by default it hides into the tray.
     #[serde(default)]
     pub quit_on_close: bool,
+    /// Measured speed per model id, tokens per second.
+    #[serde(default)]
+    pub speeds: HashMap<String, f32>,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);
