@@ -115,7 +115,9 @@ fn system_prompt() -> String {
          Чтобы вызвать инструмент, ответь ТОЛЬКО так, без другого текста:\n\
          <tool_call>\n{{\"name\": \"имя\", \"arguments\": {{...}}}}\n</tool_call>\n\
          Результат придёт в <tool_response>. После него коротко скажи пользователю, что сделано.\n\
-         Если инструмент не нужен — просто ответь.",
+         Вызывай инструмент, только когда просят что-то сделать на компьютере. На остальное \
+         (поболтать, пошутить, «мяукни») просто ответь текстом.\n\
+         Никогда не говори, что что-то сделал, если не получил об этом <tool_response>.",
         specs.join("\n")
     )
 }
@@ -126,17 +128,22 @@ fn strip_think(text: &str) -> String {
     re.replace_all(text, "").trim().to_string()
 }
 
+/// A call is a JSON object with a `name`, normally wrapped in `<tool_call>` tags. Small models
+/// drop one or both tags, so the tags are optional; the object must start the (rest of the) reply.
 fn parse_call(text: &str) -> Option<(String, Value)> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re =
-        RE.get_or_init(|| Regex::new(r"(?s)<tool_call>\s*(\{.*?\})\s*(?:</tool_call>|$)").unwrap());
-    // Small models sometimes drop the tags and answer with the bare JSON object.
-    let json = match re.captures(text) {
-        Some(caps) => caps.get(1)?.as_str(),
-        None if text.starts_with('{') && text.ends_with('}') => text,
-        None => return None,
+    let body = match text.find("<tool_call>") {
+        Some(at) => &text[at + "<tool_call>".len()..],
+        None => text,
     };
-    let call: Value = serde_json::from_str(json).ok()?;
+    let body = body.trim_start();
+    if !body.starts_with('{') {
+        return None;
+    }
+    // The first JSON value; whatever follows (`</tool_call>`, chatter) is ignored.
+    let call: Value = serde_json::Deserializer::from_str(body)
+        .into_iter::<Value>()
+        .next()?
+        .ok()?;
     let name = call["name"].as_str()?.to_string();
     let args = match &call["arguments"] {
         Value::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
@@ -161,6 +168,14 @@ mod tests {
     fn parses_a_bare_json_call() {
         let (name, _) = parse_call("{\"name\": \"system_info\", \"arguments\": {}}").unwrap();
         assert_eq!(name, "system_info");
+    }
+
+    #[test]
+    fn parses_a_call_without_the_opening_tag() {
+        let text = "{\"name\": \"open_app\", \"arguments\": {\"name\": \"notepad\"}}\n</tool_call>";
+        let (name, args) = parse_call(text).unwrap();
+        assert_eq!(name, "open_app");
+        assert_eq!(args["name"], "notepad");
     }
 
     #[test]

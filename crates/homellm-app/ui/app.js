@@ -105,12 +105,15 @@ async function start(m, button) {
 let bubble = null; // the answer being streamed
 let raw = "";
 
-// Hide the model's thinking and the tool-call markup while it streams.
+// Hide the model's thinking and tool calls while it streams. Small models drop the
+// <tool_call> tags, so a reply that starts as a JSON object is a call too.
 function visible(text) {
-  return text
+  const shown = text
     .replace(/<think>[\s\S]*?(<\/think>|$)/g, "")
     .replace(/<tool_call>[\s\S]*$/, "")
+    .replace(/<\/tool_call>/g, "")
     .trim();
+  return shown.startsWith("{") ? "" : shown;
 }
 
 function add(cls, text) {
