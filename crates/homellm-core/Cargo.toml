@@ -1,0 +1,29 @@
+[package]
+name = "homellm-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["llama"]
+# Built-in inference through llama.cpp (needs CMake and a C++ compiler).
+llama = ["dep:llama-cpp-2", "dep:encoding_rs"]
+# GPU offload for NVIDIA cards (needs the CUDA Toolkit).
+cuda = ["llama", "llama-cpp-2/cuda"]
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+directories.workspace = true
+encoding_rs = { version = "0.8", optional = true }
+enigo.workspace = true
+futures-util.workspace = true
+llama-cpp-2 = { workspace = true, optional = true }
+open.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sysinfo.workspace = true
+tokio.workspace = true
