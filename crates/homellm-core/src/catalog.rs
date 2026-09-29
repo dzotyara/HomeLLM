@@ -8,9 +8,23 @@ use crate::hardware::Hardware;
 
 const BUILTIN: &str = include_str!("../../../catalog/models.json");
 
+/// A file a model needs besides the main one (e.g. a Piper voice's config).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExtraFile {
+    pub url: String,
+    pub file: String,
+    pub size: u64,
+    #[serde(default)]
+    pub sha256: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelEntry {
     pub id: String,
+    /// `chat` (talks and controls the PC), `code` (programming) or `voice` (speech in/out,
+    /// used by the voice mode, not by the chat engine).
+    #[serde(default = "chat_kind")]
+    pub kind: String,
     pub name: String,
     pub params_b: f32,
     pub url: String,
@@ -24,6 +38,12 @@ pub struct ModelEntry {
     #[serde(default)]
     pub system_suffix: String,
     pub about: String,
+    #[serde(default)]
+    pub extra: Vec<ExtraFile>,
+}
+
+fn chat_kind() -> String {
+    "chat".into()
 }
 
 impl ModelEntry {
@@ -32,7 +52,15 @@ impl ModelEntry {
     }
 
     pub fn is_downloaded(&self) -> bool {
-        std::fs::metadata(self.path()).is_ok_and(|m| m.len() == self.size)
+        let has = |file: &str, size: u64| {
+            std::fs::metadata(crate::models_dir().join(file)).is_ok_and(|m| m.len() == size)
+        };
+        has(&self.file, self.size) && self.extra.iter().all(|e| has(&e.file, e.size))
+    }
+
+    /// Runs in the chat engine (not a voice model).
+    pub fn is_llm(&self) -> bool {
+        self.kind != "voice"
     }
 }
 
@@ -76,18 +104,22 @@ pub fn find(id: &str) -> Option<ModelEntry> {
     load().into_iter().find(|m| m.id == id)
 }
 
-/// The biggest downloaded tool-capable model: what to start when the user named none.
+/// The largest downloaded tool-capable model: what to start when the user named none.
 pub fn default_local() -> Option<ModelEntry> {
     load()
         .into_iter()
-        .filter(|m| m.tools && m.is_downloaded())
-        .max_by_key(|m| m.size)
+        .filter(|m| m.kind == "chat" && m.tools && m.is_downloaded())
+        .max_by(|a, b| a.params_b.total_cmp(&b.params_b))
 }
 
 /// The biggest tool-capable model that runs on the GPU, else the biggest that runs at all.
 pub fn recommend(hw: &Hardware) -> Option<ModelEntry> {
-    let mut models: Vec<_> = load().into_iter().filter(|m| m.tools).collect();
-    models.sort_by(|a, b| b.size.cmp(&a.size));
+    let mut models: Vec<_> = load()
+        .into_iter()
+        .filter(|m| m.kind == "chat" && m.tools)
+        .collect();
+    // The smartest first: more parameters beat a bigger file of a smaller model.
+    models.sort_by(|a, b| b.params_b.total_cmp(&a.params_b).then(b.size.cmp(&a.size)));
     let pick = |want: Fit| models.iter().find(|m| fit(m, hw) == want).cloned();
     pick(Fit::Gpu).or_else(|| pick(Fit::Cpu))
 }

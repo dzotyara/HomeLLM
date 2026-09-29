@@ -8,18 +8,53 @@ use sha2::{Digest, Sha256};
 
 use crate::catalog::ModelEntry;
 
-/// Downloads `model` into `models_dir()`; `progress(done, total)` is called as bytes arrive.
+/// Downloads `model` (and its extra files) into `models_dir()`; `progress(done, total)`
+/// is called as bytes of the main file arrive.
 pub async fn download(model: &ModelEntry, mut progress: impl FnMut(u64, u64)) -> Result<()> {
-    let dest = model.path();
     if model.is_downloaded() {
         return Ok(());
     }
+    let client = reqwest::Client::builder().user_agent("HomeLLM").build()?;
+    fetch(
+        &client,
+        &model.url,
+        &model.file,
+        model.size,
+        &model.sha256,
+        &mut progress,
+    )
+    .await?;
+    for extra in &model.extra {
+        fetch(
+            &client,
+            &extra.url,
+            &extra.file,
+            extra.size,
+            &extra.sha256,
+            &mut |_, _| {},
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn fetch(
+    client: &reqwest::Client,
+    url: &str,
+    name: &str,
+    size: u64,
+    sha256: &str,
+    progress: &mut impl FnMut(u64, u64),
+) -> Result<()> {
+    let dest = crate::models_dir().join(name);
+    if std::fs::metadata(&dest).is_ok_and(|m| m.len() == size) {
+        return Ok(());
+    }
     std::fs::create_dir_all(dest.parent().unwrap())?;
-    let part = dest.with_extension("gguf.part");
+    let part = crate::models_dir().join(format!("{name}.part"));
     let mut done = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
 
-    let client = reqwest::Client::builder().user_agent("HomeLLM").build()?;
-    let mut request = client.get(&model.url);
+    let mut request = client.get(url);
     if done > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={done}-"));
     }
@@ -39,15 +74,17 @@ pub async fn download(model: &ModelEntry, mut progress: impl FnMut(u64, u64)) ->
         let chunk = chunk.context("download interrupted; run it again to resume")?;
         file.write_all(&chunk)?;
         done += chunk.len() as u64;
-        progress(done, model.size);
+        progress(done, size);
     }
     file.flush()?;
     drop(file);
 
-    let actual = sha256_file(&part)?;
-    if actual != model.sha256 {
-        std::fs::remove_file(&part)?;
-        bail!("checksum mismatch for {}: got {actual}", model.file);
+    if !sha256.is_empty() {
+        let actual = sha256_file(&part)?;
+        if actual != sha256 {
+            std::fs::remove_file(&part)?;
+            bail!("checksum mismatch for {name}: got {actual}");
+        }
     }
     std::fs::rename(&part, &dest)?;
     Ok(())

@@ -183,6 +183,12 @@ fn local_engine(id: Option<String>) -> Result<(Box<dyn Engine>, String)> {
             anyhow::anyhow!("нет скачанных моделей: `homellm hw`, потом `homellm pull <id>`")
         })?,
     };
+    if !model.is_llm() {
+        bail!(
+            "{} — голосовая модель, для чата выберите другую",
+            model.name
+        );
+    }
     if !model.is_downloaded() {
         bail!("модель не скачана: `homellm pull {}`", model.id);
     }

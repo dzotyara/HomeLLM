@@ -141,6 +141,9 @@ impl ToolHost for AppTools {
             "switch_model" => match catalog::find(id) {
                 None => format!("нет модели {id}, посмотри list_models"),
                 Some(m) if !m.is_downloaded() => format!("{} ещё не скачана", m.name),
+                Some(m) if !m.is_llm() => {
+                    format!("{} — голосовая модель, в чат её не поставить", m.name)
+                }
                 Some(m) => {
                     *self.app.state::<App>().switch_to.lock().unwrap() = Some(m.id.clone());
                     format!("переключусь на {} сразу после этого ответа", m.name)
@@ -192,6 +195,9 @@ async fn pull_model(app: &AppHandle, id: &str) -> Result<(), String> {
 async fn load_model(app: &AppHandle, id: &str) -> Result<Value, String> {
     let state = app.state::<App>();
     let model = catalog::find(id).ok_or("нет такой модели")?;
+    if !model.is_llm() {
+        return Err("голосовые модели заработают вместе с голосовым режимом".into());
+    }
     if !model.is_downloaded() {
         return Err("модель ещё не скачана".into());
     }
@@ -241,7 +247,7 @@ fn list_models() -> Value {
         .map(|m| {
             let fit = catalog::fit(&m, &hw);
             json!({
-                "id": m.id, "name": m.name, "size": gib(m.size), "about": m.about, "tools": m.tools,
+                "id": m.id, "kind": m.kind, "name": m.name, "size": gib(m.size), "about": m.about, "tools": m.tools,
                 "fit": format!("{fit:?}"), "fit_label": fit.label(), "downloaded": m.is_downloaded(),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })

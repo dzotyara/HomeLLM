@@ -287,17 +287,25 @@ async function showModels() {
   $("models-dir").textContent = `Модели лежат в ${dir}`;
   const list = $("model-list");
   list.innerHTML = "";
-  for (const m of models) {
+  const GROUPS = { chat: "Для разговора и управления ПК", code: "Для кода", voice: "Голос — заработает с голосовым режимом" };
+  let group = null;
+  for (const m of models.sort((a, b) => Object.keys(GROUPS).indexOf(a.kind) - Object.keys(GROUPS).indexOf(b.kind))) {
+    if (m.kind !== group) {
+      group = m.kind;
+      list.append(el("div", "group", GROUPS[group] || group));
+    }
     const isCurrent = current?.id === m.id;
     const card = el("div", `model ${isCurrent ? "current" : ""}`);
     card.append(el("h4", "", m.name));
     const badges = el("div", "badges");
     if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
     badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
-    if (!m.tools) badges.append(el("span", "badge", "без управления ПК"));
+    if (!m.tools && m.kind !== "voice") badges.append(el("span", "badge", "без управления ПК"));
     card.append(badges, el("div", "about", m.about));
     const actions = el("div", "actions");
-    if (m.downloaded) {
+    if (m.downloaded && m.kind === "voice") {
+      actions.append(el("span", "hint", "скачана"));
+    } else if (m.downloaded) {
       const run = el("button", isCurrent ? "" : "primary", isCurrent ? "Работает" : "Запустить");
       run.disabled = isCurrent;
       run.onclick = () => start(m, run);
