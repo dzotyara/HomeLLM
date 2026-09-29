@@ -47,6 +47,9 @@ pub struct Settings {
     /// Hides the desktop pet (shown by default).
     #[serde(default)]
     pub hide_pet: bool,
+    /// MCP servers, one per line: `name: command args…`.
+    #[serde(default)]
+    pub mcp_servers: String,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

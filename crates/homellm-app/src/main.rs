@@ -43,6 +43,8 @@ struct App {
     next_id: AtomicU64,
     /// Models being downloaded right now.
     downloading: Mutex<HashSet<String>>,
+    /// Connected MCP servers.
+    mcp: tokio::sync::RwLock<Vec<Arc<homellm_core::mcp::McpServer>>>,
     /// A model switch asked for in the chat: done once the answer is out.
     switch_to: Mutex<Option<String>>,
 }
@@ -78,9 +80,10 @@ struct AppTools {
 #[async_trait]
 impl ToolHost for AppTools {
     fn specs(&self) -> Vec<Value> {
+        let mut extra = self.specs_extra();
         let id =
             json!({"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]});
-        vec![
+        [
             json!({"name": "list_models", "description": "Каталог моделей: какие есть, какие скачаны, пойдут ли на этом ПК.",
                    "parameters": {"type": "object", "properties": {}}}),
             json!({"name": "hardware_info", "description": "Железо компьютера: память, видеокарта.",
@@ -108,6 +111,9 @@ impl ToolHost for AppTools {
                        "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir", "theme"]},
                        "value": {"type": "string"}}, "required": ["key", "value"]}}),
         ]
+        .into_iter()
+        .chain(extra.drain(..))
+        .collect()
     }
 
     fn context(&self) -> String {
@@ -116,6 +122,9 @@ impl ToolHost for AppTools {
 
     async fn call(&self, name: &str, args: &Value) -> Option<String> {
         let id = args["id"].as_str().unwrap_or_default();
+        if let Some(rest) = name.strip_prefix("mcp_") {
+            return Some(self.call_mcp(rest, args).await);
+        }
         Some(match name {
             "list_models" => {
                 let hw = hardware::detect();
@@ -322,6 +331,48 @@ impl ToolHost for AppTools {
 const HOST_STEPS: &[&str] = &["remind", "set_setting", "switch_model"];
 
 impl AppTools {
+    /// MCP tools for the prompt.
+    fn specs_extra(&self) -> Vec<Value> {
+        // MCP tools: `mcp_<server>_<tool>`. try_read: never block the prompt on a connecting server.
+        let state = self.app.state::<App>();
+        let Ok(servers) = state.mcp.try_read() else {
+            return vec![];
+        };
+        servers
+            .iter()
+            .flat_map(|s| {
+                s.tools.iter().map(move |t| {
+                    json!({"name": format!("mcp_{}_{}", s.spec.name, t.name),
+                           "description": format!("[{}] {}", s.spec.name, t.description), "parameters": t.schema})
+                })
+            })
+            .collect()
+    }
+
+    /// An MCP tool: external code, so it always asks first.
+    async fn call_mcp(&self, rest: &str, args: &Value) -> String {
+        let state = self.app.state::<App>();
+        let servers = state.mcp.read().await.clone();
+        let Some((server, tool)) = servers.iter().find_map(|s| {
+            rest.strip_prefix(&format!("{}_", s.spec.name))
+                .map(|tool| (s.clone(), tool.to_string()))
+        }) else {
+            return format!("ошибка: нет MCP-инструмента {rest}");
+        };
+        if !(AskUser {
+            app: self.app.clone(),
+        })
+        .confirm(&format!("mcp_{rest}"), args)
+        .await
+        {
+            return "пользователь запретил это действие".into();
+        }
+        server
+            .call(&tool, args)
+            .await
+            .unwrap_or_else(|e| format!("ошибка: {e:#}"))
+    }
+
     /// One scenario step: a PC tool (risky ones still ask) or one of `HOST_STEPS`.
     async fn run_step(&self, step: &scenarios::Step) -> String {
         if let Some(tool) = homellm_core::tools::find(&step.tool) {
@@ -919,6 +970,31 @@ fn get_settings() -> Settings {
     settings::get()
 }
 
+/// (Re)connects the MCP servers from the settings; returns a line per server for the window.
+async fn connect_mcp(app: &AppHandle) -> Vec<String> {
+    let specs = homellm_core::mcp::parse_specs(&settings::get().mcp_servers);
+    let mut servers = vec![];
+    let mut report = vec![];
+    for spec in specs {
+        let name = spec.name.clone();
+        match homellm_core::mcp::McpServer::start(spec).await {
+            Ok(server) => {
+                report.push(format!("{name}: {} инструментов", server.tools.len()));
+                servers.push(Arc::new(server));
+            }
+            Err(e) => report.push(format!("{name}: {e:#}")),
+        }
+    }
+    *app.state::<App>().mcp.write().await = servers;
+    let _ = app.emit("mcp-status", &report);
+    report
+}
+
+#[tauri::command]
+async fn reconnect_mcp(app: AppHandle) -> Vec<String> {
+    connect_mcp(&app).await
+}
+
 #[tauri::command]
 fn save_settings(app: AppHandle, value: Settings) -> Result<(), String> {
     if value.autostart != settings::get().autostart {
@@ -976,6 +1052,10 @@ fn main() {
             }
             apply_autostart(app.handle(), settings::get().autostart);
             set_pet(app.handle(), !settings::get().hide_pet);
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                connect_mcp(&handle).await;
+            });
             // A fresher model catalog from GitHub, once a day; offline is fine.
             tauri::async_runtime::spawn(async {
                 if let Err(e) = catalog::refresh().await {
@@ -1030,6 +1110,7 @@ fn main() {
             add_model,
             read_attachment,
             show_main_window,
+            reconnect_mcp,
             forget_model,
             open_models_dir,
             answer,

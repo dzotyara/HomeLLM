@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod download;
 pub mod engine;
 pub mod hardware;
+pub mod mcp;
 pub mod settings;
 pub mod tools;
 

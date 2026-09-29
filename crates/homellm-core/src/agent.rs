@@ -44,8 +44,8 @@ pub enum Event {
 
 pub struct Agent {
     engine: Box<dyn Engine>,
-    /// The system prompt without the host's context.
-    system: String,
+    /// Appended to the system prompt (e.g. `/no_think`).
+    suffix: String,
     host: Option<Arc<dyn ToolHost>>,
     history: Vec<Message>,
 }
@@ -60,22 +60,36 @@ impl Agent {
         system_suffix: &str,
         host: Option<Arc<dyn ToolHost>>,
     ) -> Self {
+        let mut agent = Self {
+            engine,
+            suffix: system_suffix.to_string(),
+            host,
+            history: vec![Message::new("system", String::new())],
+        };
+        agent.history[0].content = agent.system();
+        agent
+    }
+
+    /// Rules, every tool available right now, the model's suffix and the host's context.
+    /// Rebuilt before every answer: tools that appear later (MCP servers connecting,
+    /// web search switched on) are known at once.
+    fn system(&self) -> String {
         let mut specs: Vec<Value> = tools::all()
             .iter()
             .map(|t| serde_json::json!({"name": t.name, "description": t.description, "parameters": (t.parameters)()}))
             .collect();
-        if let Some(host) = &host {
+        let mut context = String::new();
+        if let Some(host) = &self.host {
             specs.extend(host.specs());
+            context = host.context();
         }
-        let system = format!("{}\n{}", system_prompt(&specs), system_suffix)
+        let mut system = format!("{}\n{}", system_prompt(&specs), self.suffix)
             .trim()
             .to_string();
-        Self {
-            engine,
-            host,
-            history: vec![Message::new("system", system.clone())],
-            system,
+        if !context.is_empty() {
+            system = format!("{system}\n\n{context}");
         }
+        system
     }
 
     /// Starts a new conversation: keeps only the system prompt.
@@ -107,14 +121,7 @@ impl Agent {
         tokens: TokenSink,
         mut on_event: impl FnMut(Event),
     ) -> Result<String> {
-        if let Some(host) = &self.host {
-            let context = host.context();
-            self.history[0].content = if context.is_empty() {
-                self.system.clone()
-            } else {
-                format!("{}\n\n{context}", self.system)
-            };
-        }
+        self.history[0].content = self.system();
         self.history.push(Message::new("user", text));
         let mut used_tool = false;
         let mut nudged = false;

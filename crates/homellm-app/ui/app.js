@@ -363,6 +363,9 @@ $("new-chat").onclick = async () => {
 
 listen("chats-changed", showChats);
 listen("new-chat", () => $("new-chat").click());
+listen("mcp-status", ({ payload }) => {
+  $("mcp-status").textContent = payload.length ? payload.join(" · ") : "MCP-серверы не заданы.";
+});
 listen("reminder", ({ payload }) => addMessage("bot", `⏰ Напоминание: ${payload}`));
 listen("focus-input", () => $("input").focus());
 
@@ -528,6 +531,7 @@ async function fillSettings() {
   form.elements.quit_on_close.checked = !!s.quit_on_close;
   form.elements.web_search.checked = !!s.web_search;
   form.elements.show_pet.checked = !s.hide_pet;
+  form.elements.mcp_servers.value = s.mcp_servers || "";
   applyTheme(s.theme);
 }
 
@@ -556,8 +560,13 @@ form.addEventListener("submit", async (e) => {
     custom_models: [],
   };
   try {
+    const mcpChanged = value.mcp_servers !== (await invoke("get_settings")).mcp_servers;
     await invoke("save_settings", { value });
     $("saved").textContent = "Сохранено";
+    if (mcpChanged) {
+      $("mcp-status").textContent = "Подключаю MCP-серверы…";
+      invoke("reconnect_mcp");
+    }
   } catch (err) {
     $("saved").textContent = `Ошибка: ${err}`;
   }
