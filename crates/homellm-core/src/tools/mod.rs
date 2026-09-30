@@ -1,6 +1,7 @@
 //! Tools the model calls to act on the PC. Each has a JSON schema for the
 //! prompt and a risk level: anything above `Safe` needs the user's consent.
 
+mod files;
 mod pc;
 mod web;
 
@@ -26,6 +27,7 @@ pub struct Tool {
 
 pub fn all() -> Vec<Tool> {
     let mut tools = pc::tools();
+    tools.extend(files::tools());
     if crate::settings::get().web_search {
         tools.extend(web::tools());
     }
