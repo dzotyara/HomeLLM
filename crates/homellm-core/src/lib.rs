@@ -8,6 +8,7 @@ pub mod download;
 pub mod engine;
 pub mod hardware;
 pub mod mcp;
+pub mod screen;
 pub mod settings;
 pub mod spotify;
 pub mod tools;

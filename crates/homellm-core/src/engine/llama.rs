@@ -11,9 +11,12 @@ use llama_cpp_2::llama_backend::LlamaBackend;
 use llama_cpp_2::llama_batch::LlamaBatch;
 use llama_cpp_2::model::params::LlamaModelParams;
 use llama_cpp_2::model::{AddBos, LlamaChatMessage, LlamaModel};
+use llama_cpp_2::mtmd::{
+    MtmdBitmap, MtmdContext, MtmdContextParams, MtmdInputText, mtmd_default_marker,
+};
 use llama_cpp_2::sampling::LlamaSampler;
 
-use super::{Engine, Message, TokenSink};
+use super::{Engine, Message, TokenSink, keep_last_images};
 
 const MAX_NEW_TOKENS: usize = 1024;
 const CHUNK: usize = 512;
@@ -44,11 +47,13 @@ const GPU_COMPUTE: u64 = 900_000_000;
 /// How many layers go to the GPU, and the context size. Planned from free video memory
 /// up front: a failed allocation on Vulkan does not give its memory back, so trial and
 /// error only makes things worse. Full context if it fits, else half; then fewer layers.
-fn plan_gpu(path: &Path, n_ctx: u32) -> (u32, u32) {
+/// `reserved`: video memory taken by something else first (the vision projector).
+fn plan_gpu(path: &Path, n_ctx: u32, reserved: u64) -> (u32, u32) {
     let size = std::fs::metadata(path).map_or(0, |m| m.len());
     let Some(free) = gpu_free() else {
         return (999, n_ctx);
     };
+    let free = free.saturating_sub(reserved);
     // Shapes from the metadata alone (no weights loaded).
     let params = LlamaModelParams::default().with_vocab_only(true);
     let meta = LlamaModel::load_from_file(backend(), path, &params).ok();
@@ -107,6 +112,8 @@ pub fn best_gpu() -> Option<(String, u64)> {
 pub struct LlamaEngine {
     name: String,
     model: Arc<LlamaModel>,
+    /// The vision projector: set when the model's mmproj file is downloaded.
+    vision: Option<Arc<MtmdContext>>,
     n_ctx: u32,
 }
 
@@ -116,16 +123,24 @@ impl LlamaEngine {
     pub fn load_entry(model: &crate::catalog::ModelEntry) -> Result<(Self, bool)> {
         let hw = crate::hardware::detect();
         let on_gpu = crate::catalog::fit(model, &hw) == crate::catalog::Fit::Gpu;
-        Ok((Self::load(&model.path(), model.context, on_gpu)?, on_gpu))
+        let vision = model.vision_path();
+        Ok((
+            Self::load(&model.path(), model.context, on_gpu, vision.as_deref())?,
+            on_gpu,
+        ))
     }
 
     /// `on_gpu`: offload every layer to the video card; pass `catalog::fit(..) == Fit::Gpu`,
     /// since a model that does not fit in video memory fails to load there.
-    pub fn load(path: &Path, n_ctx: u32, on_gpu: bool) -> Result<Self> {
+    /// `mmproj`: the vision projector, so the model sees pictures.
+    pub fn load(path: &Path, n_ctx: u32, on_gpu: bool, mmproj: Option<&Path>) -> Result<Self> {
         // Plan the split from free video memory up front: a failed context allocation on
         // Vulkan does not give its memory back, so trial and error only makes things worse.
         let (layers, n_ctx) = if on_gpu {
-            plan_gpu(path, n_ctx)
+            let reserved = mmproj
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map_or(0, |m| m.len());
+            plan_gpu(path, n_ctx, reserved)
         } else {
             (0, n_ctx)
         };
@@ -133,7 +148,23 @@ impl LlamaEngine {
         let model = LlamaModel::load_from_file(backend(), path, &params)
             .with_context(|| format!("failed to load {}", path.display()))?;
         let ctx_size = n_ctx.min(model.n_ctx_train());
+        let vision = match mmproj {
+            Some(mmproj) => {
+                let params = MtmdContextParams {
+                    use_gpu: on_gpu,
+                    print_timings: false,
+                    n_threads: threads(),
+                    ..MtmdContextParams::default()
+                };
+                let vision =
+                    MtmdContext::init_from_file(&mmproj.to_string_lossy(), &model, &params)
+                        .with_context(|| format!("failed to load {}", mmproj.display()))?;
+                vision.support_vision().then(|| Arc::new(vision))
+            }
+            None => None,
+        };
         Ok(Self {
+            vision,
             name: path
                 .file_name()
                 .unwrap_or_default()
@@ -151,20 +182,61 @@ impl Engine for LlamaEngine {
         self.name.clone()
     }
 
+    fn sees_images(&self) -> bool {
+        self.vision.is_some()
+    }
+
     async fn complete(&self, messages: &[Message], tokens: TokenSink) -> Result<String> {
         let model = self.model.clone();
+        let vision = self.vision.clone();
         let messages = messages.to_vec();
         let n_ctx = self.n_ctx;
-        tokio::task::spawn_blocking(move || generate(&model, &messages, n_ctx, tokens)).await?
+        tokio::task::spawn_blocking(move || {
+            generate(&model, vision.as_deref(), &messages, n_ctx, tokens)
+        })
+        .await?
     }
+}
+
+fn threads() -> i32 {
+    std::thread::available_parallelism().map_or(4, |n| n.get()) as i32
+}
+
+/// A media marker per picture in front of the text; without a projector, a note instead.
+fn with_markers(messages: &[Message], sees: bool) -> (Vec<Message>, Vec<String>) {
+    let mut images = vec![];
+    let messages = keep_last_images(messages)
+        .into_iter()
+        .map(|mut m| {
+            if m.images.is_empty() {
+                return m;
+            }
+            if sees {
+                let markers = vec![mtmd_default_marker(); m.images.len()].join("\n");
+                m.content = format!("{markers}\n{}", m.content);
+                images.append(&mut m.images);
+            } else {
+                m.content = format!(
+                    "{}\n[приложена картинка, но эта модель не видит изображений]",
+                    m.content
+                );
+                m.images.clear();
+            }
+            m
+        })
+        .collect();
+    (messages, images)
 }
 
 fn generate(
     model: &LlamaModel,
+    vision: Option<&MtmdContext>,
     messages: &[Message],
     n_ctx: u32,
     tokens: TokenSink,
 ) -> Result<String> {
+    let (messages, images) = with_markers(messages, vision.is_some());
+    let messages = &messages[..];
     // The chat template embedded in the GGUF (ChatML, Llama 3, Gemma...). llama.cpp only
     // knows the templates it recognises (Gemma 4's gave "ffi error -1"): then build it by hand.
     let chat = messages
@@ -184,41 +256,61 @@ fn generate(
             messages,
         ),
     };
-    // The templates write BOS themselves where the model needs it.
-    let prompt_tokens = model.str_to_token(&prompt, AddBos::Never)?;
-    if prompt_tokens.len() + MAX_NEW_TOKENS > n_ctx as usize {
-        anyhow::bail!(
-            "conversation is too long for the context ({} tokens)",
-            prompt_tokens.len()
-        );
-    }
-
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()) as i32;
-    // Weights may fit in video memory while the context does not (the desktop and other
-    // programs hold some): try smaller contexts that still fit the conversation.
-    // The size that fitted in video memory when the model was loaded (see `working_ctx`).
     let params = LlamaContextParams::default()
         .with_n_ctx(NonZeroU32::new(n_ctx))
-        .with_n_threads(threads);
-    let mut ctx = model.new_context(backend(), params).context(
-        "не хватает видеопамяти: закройте игры и тяжёлые программы или выберите модель поменьше",
-    )?;
-
-    // Feed the prompt in chunks; logits only for its very last token.
+        .with_n_threads(threads())
+        .with_n_batch(CHUNK as u32);
+    let too_long =
+        |n: usize| anyhow::anyhow!("conversation is too long for the context ({n} tokens)");
     let mut batch = LlamaBatch::new(CHUNK, 1);
-    let last = prompt_tokens.len() - 1;
-    for (start, chunk) in prompt_tokens
-        .chunks(CHUNK)
-        .enumerate()
-        .map(|(i, c)| (i * CHUNK, c))
-    {
-        batch.clear();
-        for (i, &token) in chunk.iter().enumerate() {
-            let pos = start + i;
-            batch.add(token, pos as i32, &[0], pos == last)?;
+    let (mut ctx, prompt_len) = match vision.filter(|_| !images.is_empty()) {
+        // Pictures: the projector turns text and pictures into chunks and evaluates them.
+        Some(vision) => {
+            let bitmaps = images
+                .iter()
+                .map(|path| {
+                    MtmdBitmap::from_file(vision, path, false)
+                        .with_context(|| format!("не удалось открыть картинку {path}"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let refs: Vec<&MtmdBitmap> = bitmaps.iter().collect();
+            let text = MtmdInputText {
+                text: prompt,
+                add_special: false,
+                parse_special: true,
+            };
+            let chunks = vision.tokenize(text, &refs)?;
+            if chunks.total_tokens() + MAX_NEW_TOKENS > n_ctx as usize {
+                return Err(too_long(chunks.total_tokens()));
+            }
+            let ctx = new_context(model, params)?;
+            let n_past = chunks.eval_chunks(vision, &ctx, 0, 0, CHUNK as i32, true)?;
+            (ctx, n_past as usize)
         }
-        ctx.decode(&mut batch)?;
-    }
+        None => {
+            // The templates write BOS themselves where the model needs it.
+            let prompt_tokens = model.str_to_token(&prompt, AddBos::Never)?;
+            if prompt_tokens.len() + MAX_NEW_TOKENS > n_ctx as usize {
+                return Err(too_long(prompt_tokens.len()));
+            }
+            let mut ctx = new_context(model, params)?;
+            // Feed the prompt in chunks; logits only for its very last token.
+            let last = prompt_tokens.len() - 1;
+            for (start, chunk) in prompt_tokens
+                .chunks(CHUNK)
+                .enumerate()
+                .map(|(i, c)| (i * CHUNK, c))
+            {
+                batch.clear();
+                for (i, &token) in chunk.iter().enumerate() {
+                    let pos = start + i;
+                    batch.add(token, pos as i32, &[0], pos == last)?;
+                }
+                ctx.decode(&mut batch)?;
+            }
+            (ctx, prompt_tokens.len())
+        }
+    };
 
     let mut sampler = LlamaSampler::chain_simple([
         LlamaSampler::min_p(0.05, 1),
@@ -227,11 +319,12 @@ fn generate(
     ]);
     let mut decoder = encoding_rs::UTF_8.new_decoder();
     let mut text = String::new();
-    let mut pos = prompt_tokens.len() as i32;
+    let mut pos = prompt_len as i32;
     let started = std::time::Instant::now();
     let mut generated = 0usize;
     for _ in 0..MAX_NEW_TOKENS {
         generated += 1;
+        // After the projector the batch is still empty: -1 is the last evaluated token.
         let token = sampler.sample(&ctx, batch.n_tokens() - 1);
         sampler.accept(token);
         if model.is_eog_token(token) {
@@ -263,6 +356,15 @@ fn generate(
         *LAST_SPEED.lock().unwrap() = Some(generated as f32 / secs);
     }
     Ok(text)
+}
+
+fn new_context(
+    model: &LlamaModel,
+    params: LlamaContextParams,
+) -> Result<llama_cpp_2::context::LlamaContext<'_>> {
+    model.new_context(backend(), params).context(
+        "не хватает видеопамяти: закройте игры и тяжёлые программы или выберите модель поменьше",
+    )
 }
 
 /// A prompt for models whose template llama.cpp does not know: Gemma's turn format
@@ -326,6 +428,25 @@ fn manual_prompt(arch: &str, messages: &[Message]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pictures_become_markers_or_a_note() {
+        let msgs = [
+            Message::with_images("user", "что тут?", vec!["a.png".into()]),
+            Message::new("assistant", "кот"),
+            Message::with_images("user", "а тут?", vec!["b.png".into(), "c.png".into()]),
+        ];
+        let (seen, images) = with_markers(&msgs, true);
+        assert_eq!(images, ["b.png", "c.png"], "only the latest pictures");
+        assert!(seen[0].content.contains("уже обсуждали"));
+        assert_eq!(
+            seen[2].content,
+            format!("{0}\n{0}\nа тут?", mtmd_default_marker())
+        );
+        let (blind, images) = with_markers(&msgs, false);
+        assert!(images.is_empty());
+        assert!(blind[2].content.contains("не видит изображений"));
+    }
 
     #[test]
     fn gemma_prompt_folds_the_system_rules_into_the_first_turn() {

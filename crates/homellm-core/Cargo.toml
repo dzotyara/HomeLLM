@@ -9,8 +9,8 @@ default = ["llama"]
 # Built-in inference through llama.cpp on the GPU: Vulkan on Windows/Linux (any NVIDIA, AMD or
 # Intel card; building needs the Vulkan SDK), Metal on macOS.
 llama = ["llama-cpu", "dep:llama-cpp-sys-2"]
-# llama.cpp on the CPU only: no GPU SDK needed to build.
-llama-cpu = ["dep:llama-cpp-2", "dep:encoding_rs"]
+# llama.cpp on the CPU only: no GPU SDK needed to build. mtmd: pictures through a vision projector.
+llama-cpu = ["dep:llama-cpp-2", "llama-cpp-2/mtmd", "dep:encoding_rs"]
 # CUDA instead of Vulkan for the last bit of speed on NVIDIA (needs the CUDA Toolkit).
 cuda = ["llama-cpu", "llama-cpp-2/cuda"]
 

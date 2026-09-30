@@ -505,6 +505,7 @@ fn list_models(state: State<'_, App>) -> Value {
                 "speed": speeds.get(&m.id).map(|s| s.round()),
                 "new": catalog::is_new(&m.id),
                 "verified": m.verified,
+                "vision": m.vision.is_some(),
                 "bytes": m.size, "partial": m.partial(), "downloading": downloading.contains(&m.id),
                 "recommended": recommended.as_deref() == Some(m.id.as_str()),
             })
@@ -541,8 +542,70 @@ fn current(state: State<'_, App>) -> Option<Value> {
     state.model.lock().unwrap().clone()
 }
 
+/// Pictures for a model that sees: copied next to the chats (the chat keeps referring to
+/// them), and the model's vision projector downloaded on the first picture.
+async fn prepare_images(
+    app: &AppHandle,
+    state: &App,
+    images: Vec<String>,
+) -> Result<Vec<String>, String> {
+    if images.is_empty() {
+        return Ok(images);
+    }
+    let sees = state
+        .agent
+        .lock()
+        .await
+        .as_ref()
+        .is_some_and(|a| a.sees_images());
+    if !sees {
+        let id = state
+            .model
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|m| m["id"].as_str().map(String::from))
+            .unwrap_or_default();
+        let model = catalog::find(&id).filter(|m| m.vision.is_some()).ok_or(
+            "Эта модель не видит картинки. Выберите модель с пометкой «видит картинки»: Qwen3.5, Gemma 3 или Gemma 4",
+        )?;
+        let size = model.vision.as_ref().map_or(0, |v| v.size);
+        let _ = app.emit(
+            "token",
+            format!("_Скачиваю зрение для модели ({})…_\n\n", gib(size)),
+        );
+        download::download_vision(&model, |_, _| {})
+            .await
+            .map_err(err_text)?;
+        load_model(app, &id).await?;
+    }
+    let dir = homellm_core::screen::images_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    images
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let src = std::path::Path::new(path);
+            let name = src
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let dest = dir.join(format!("{stamp}-{i}-{name}"));
+            std::fs::copy(src, &dest).map_err(|e| format!("{name}: {e}"))?;
+            Ok(dest.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
 #[tauri::command]
-async fn send(app: AppHandle, state: State<'_, App>, text: String) -> Result<String, String> {
+async fn send(
+    app: AppHandle,
+    state: State<'_, App>,
+    text: String,
+    images: Option<Vec<String>>,
+) -> Result<String, String> {
+    let images = prepare_images(&app, &state, images.unwrap_or_default()).await?;
     let mut guard = state.agent.lock().await;
     let agent = guard
         .as_mut()
@@ -558,7 +621,7 @@ async fn send(app: AppHandle, state: State<'_, App>, text: String) -> Result<Str
     };
     let confirm = AskUser { app: app.clone() };
     let answer = agent
-        .send(&text, &confirm, Some(tx), |event| {
+        .send_with_images(&text, images, &confirm, Some(tx), |event| {
             let _ = match event {
                 Event::ToolCall { name, args } => {
                     app.emit("tool", json!({"name": name, "args": args}))
@@ -727,10 +790,13 @@ fn read_attachment(path: String) -> Result<Value, String> {
         "pdf" => {
             pdf_extract::extract_text(file).map_err(|e| format!("не удалось прочитать PDF: {e}"))?
         }
-        "gguf" | "exe" | "dll" | "zip" | "7z" | "rar" | "png" | "jpg" | "jpeg" | "gif" | "webp"
-        | "mp3" | "mp4" | "docx" | "xlsx" => {
+        // Pictures go to the model as they are (see `prepare_images`).
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" => {
+            return Ok(json!({"name": name, "image": path}));
+        }
+        "gguf" | "exe" | "dll" | "zip" | "7z" | "rar" | "mp3" | "mp4" | "docx" | "xlsx" => {
             return Err(format!(
-                "{name}: такие файлы пока не читаю — только текст и PDF"
+                "{name}: такие файлы пока не читаю — только текст, PDF и картинки"
             ));
         }
         _ => {

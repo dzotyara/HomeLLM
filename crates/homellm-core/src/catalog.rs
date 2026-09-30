@@ -40,6 +40,10 @@ pub struct ModelEntry {
     pub about: String,
     #[serde(default)]
     pub extra: Vec<ExtraFile>,
+    /// The vision projector (mmproj): with it the model sees pictures. Optional, downloaded
+    /// with the model or when the first picture arrives.
+    #[serde(default)]
+    pub vision: Option<ExtraFile>,
     /// Checked in HomeLLM: loads, answers in Russian, calls tools.
     #[serde(default)]
     pub verified: bool,
@@ -67,6 +71,15 @@ impl ModelEntry {
             std::fs::metadata(crate::models_dir().join(file)).is_ok_and(|m| m.len() == size)
         };
         has(&self.file, self.size) && self.extra.iter().all(|e| has(&e.file, e.size))
+    }
+
+    /// The downloaded vision projector, if any.
+    pub fn vision_path(&self) -> Option<PathBuf> {
+        let v = self.vision.as_ref()?;
+        let path = crate::models_dir().join(&v.file);
+        std::fs::metadata(&path)
+            .is_ok_and(|m| m.len() == v.size)
+            .then_some(path)
     }
 
     /// Bytes of the main file already downloaded by an interrupted download.
@@ -120,10 +133,21 @@ pub fn builtin() -> Vec<ModelEntry> {
 
 /// The fresher catalog fetched from GitHub, else the built-in one.
 pub fn load() -> Vec<ModelEntry> {
-    std::fs::read_to_string(fetched_file())
+    let Some(mut fetched) = std::fs::read_to_string(fetched_file())
         .ok()
         .and_then(|text| parse(&text))
-        .unwrap_or_else(builtin)
+    else {
+        return builtin();
+    };
+    // A catalog fetched before this build may lack fields the build knows (vision files).
+    let builtin = builtin();
+    for m in fetched.iter_mut().filter(|m| m.vision.is_none()) {
+        m.vision = builtin
+            .iter()
+            .find(|b| b.id == m.id)
+            .and_then(|b| b.vision.clone());
+    }
+    fetched
 }
 
 const REMOTE: &str = "https://raw.githubusercontent.com/dzotyara/HomeLLM/main/catalog/models.json";
@@ -228,6 +252,7 @@ fn local_entry(path: &std::path::Path) -> ModelEntry {
         system_suffix: String::new(),
         about: format!("Своя модель: {}", path.display()),
         extra: vec![],
+        vision: None,
         verified: false,
         local_path: Some(path.to_path_buf()),
     }
@@ -298,6 +323,14 @@ mod tests {
                 "{}: extra",
                 m.id
             );
+            if let Some(v) = &m.vision {
+                assert!(
+                    v.size > 0 && v.url.starts_with("https://huggingface.co/") && hex(&v.sha256),
+                    "{}: vision",
+                    m.id
+                );
+                assert!(v.file.contains("mmproj"), "{}: vision file name", m.id);
+            }
         }
         assert!(models.len() >= 30);
     }

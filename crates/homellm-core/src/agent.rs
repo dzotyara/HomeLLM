@@ -15,6 +15,8 @@ use crate::tools::{self, Risk};
 
 /// Tool calls per user message before we give up.
 const MAX_STEPS: usize = 5;
+/// Handled by the agent itself: the screenshot goes to the model as a picture.
+const LOOK_AT_SCREEN: &str = "look_at_screen";
 
 /// Asks the user whether a risky tool may run (a y/n prompt in the CLI, a dialog in the app).
 #[async_trait]
@@ -79,6 +81,11 @@ impl Agent {
             .map(|t| serde_json::json!({"name": t.name, "description": t.description, "parameters": (t.parameters)()}))
             .collect();
         let mut context = String::new();
+        if self.engine.sees_images() {
+            specs.push(serde_json::json!({"name": LOOK_AT_SCREEN,
+                "description": "Посмотреть на экран пользователя (скриншот): «что у меня на экране», «что за ошибка», «помоги с этим окном».",
+                "parameters": {"type": "object", "properties": {}}}));
+        }
         if let Some(host) = &self.host {
             specs.extend(host.specs());
             context = host.context();
@@ -113,16 +120,35 @@ impl Agent {
         self.engine.name()
     }
 
+    /// The model understands pictures.
+    pub fn sees_images(&self) -> bool {
+        self.engine.sees_images()
+    }
+
     /// Runs one user message to the final answer; returns it without tool markup.
     pub async fn send(
         &mut self,
         text: &str,
         confirm: &dyn Confirm,
         tokens: TokenSink,
+        on_event: impl FnMut(Event),
+    ) -> Result<String> {
+        self.send_with_images(text, vec![], confirm, tokens, on_event)
+            .await
+    }
+
+    /// Like `send`, with pictures (paths) for a model that sees.
+    pub async fn send_with_images(
+        &mut self,
+        text: &str,
+        images: Vec<String>,
+        confirm: &dyn Confirm,
+        tokens: TokenSink,
         mut on_event: impl FnMut(Event),
     ) -> Result<String> {
         self.history[0].content = self.system();
-        self.history.push(Message::new("user", text));
+        self.history
+            .push(Message::with_images("user", text, images));
         let mut used_tool = false;
         let mut nudged = false;
         for _ in 0..MAX_STEPS {
@@ -148,15 +174,26 @@ impl Agent {
                 name: name.clone(),
                 args: args.clone(),
             });
-            let result = self.run_tool(&name, &args, confirm).await;
+            let (result, images) = if name == LOOK_AT_SCREEN && self.engine.sees_images() {
+                match crate::screen::capture() {
+                    Ok(path) => (
+                        "скриншот экрана приложен".to_string(),
+                        vec![path.to_string_lossy().into_owned()],
+                    ),
+                    Err(e) => (format!("ошибка: {e}"), vec![]),
+                }
+            } else {
+                (self.run_tool(&name, &args, confirm).await, vec![])
+            };
             on_event(Event::ToolResult {
                 name: name.clone(),
                 result: result.clone(),
             });
             // Most chat templates have no `tool` role: a user turn works everywhere.
-            self.history.push(Message::new(
+            self.history.push(Message::with_images(
                 "user",
                 format!("<tool_response>\n{result}\n</tool_response>"),
+                images,
             ));
         }
         Ok("Не получилось за несколько шагов, попробуй сформулировать иначе.".into())

@@ -195,13 +195,13 @@ let confirmId = null;
 let closeConfirm = () => {};
 listen("confirm-done", ({ payload }) => payload.id === confirmId && closeConfirm());
 
-let attachments = []; // [{name, text}]
+let attachments = []; // [{name, text}] or [{name, image}]
 
 function showAttachments() {
   const bar = $("attachments");
   bar.innerHTML = "";
   attachments.forEach((a, i) => {
-    const chip = el("span", "file-chip", `📎 ${a.name}${a.truncated ? " (обрезан)" : ""}`);
+    const chip = el("span", "file-chip", `${a.image ? "🖼" : "📎"} ${a.name}${a.truncated ? " (обрезан)" : ""}`);
     const x = el("button", "", "✕");
     x.type = "button";
     x.title = "Убрать";
@@ -231,9 +231,16 @@ listen("tauri://drag-drop", async ({ payload }) => {
 
 async function submit(text) {
   text = text.trim();
+  const images = attachments.filter((a) => a.image);
+  const files = attachments.filter((a) => !a.image);
+  if (files.length) {
+    const body = files.map((a) => `<<файл: ${a.name}>>\n${a.text}\n<</файл>>`).join("\n\n");
+    text = `${text || "Что в этом файле?"}\n\n${body}`;
+  }
+  if (images.length && !text) text = "Что на картинке?";
+  let shown = text;
+  if (images.length) shown += `\n\n${images.map((a) => `🖼 ${a.name}`).join("\n")}`;
   if (attachments.length) {
-    const files = attachments.map((a) => `<<файл: ${a.name}>>\n${a.text}\n<</файл>>`).join("\n\n");
-    text = `${text || "Что в этом файле?"}\n\n${files}`;
     attachments = [];
     showAttachments();
   }
@@ -242,10 +249,10 @@ async function submit(text) {
   $("send").disabled = true;
   $("input").value = "";
   autosize();
-  addMessage("user", text);
+  addMessage("user", shown);
   bubble = null;
   try {
-    const answer = await invoke("send", { text });
+    const answer = await invoke("send", { text, images: images.map((a) => a.image) });
     if (!bubble) bubble = addMessage("bot", "");
     bubble.innerHTML = markdown(answer);
   } catch (e) {
@@ -425,6 +432,7 @@ async function showModels() {
     if (m.recommended) badges.append(el("span", "badge rec", "рекомендую"));
     if (m.new) badges.append(el("span", "badge rec", "новое"));
     if (m.verified) badges.append(el("span", "badge Gpu", "✓ проверена"));
+    if (m.vision) badges.append(el("span", "badge", "видит картинки"));
     badges.append(el("span", `badge ${m.fit}`, m.fit_label), el("span", "badge", m.size));
     if (m.speed) badges.append(el("span", "badge", `~${m.speed} ток/с у вас`));
     if (!m.tools && m.kind !== "voice") badges.append(el("span", "badge", "без управления ПК"));

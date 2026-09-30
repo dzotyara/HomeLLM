@@ -102,7 +102,13 @@
     "tools": true,
     "system_suffix": "",
     "about": "Новее Qwen3 4B, умнее при том же размере.",
-    "verified": true
+    "verified": true,
+    "vision": {
+      "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf",
+      "file": "Qwen3.5-4B-mmproj-F16.gguf",
+      "size": 672423616,
+      "sha256": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864"
+    }
   },
   {
     "id": "gemma3-4b",
@@ -117,7 +123,13 @@
     "tools": true,
     "system_suffix": "",
     "about": "Хорошо говорит по-русски, справляется с управлением ПК.",
-    "verified": true
+    "verified": true,
+    "vision": {
+      "url": "https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/resolve/main/mmproj-F16.gguf",
+      "file": "gemma-3-4b-it-mmproj-F16.gguf",
+      "size": 851251328,
+      "sha256": "731199e016ec5f227b8293fef839899472e0ee4c51adf5f9e5cb66f6558fa142"
+    }
   },
   {
     "id": "gemma4-e4b",
@@ -132,7 +144,13 @@
     "tools": true,
     "system_suffix": "",
     "about": "Новая Gemma: лёгкая, хорошо по-русски.",
-    "verified": true
+    "verified": true,
+    "vision": {
+      "url": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/mmproj-gemma-4-E4B-it-Q8_0.gguf",
+      "file": "mmproj-gemma-4-E4B-it-Q8_0.gguf",
+      "size": 559874816,
+      "sha256": "197f49a93027f9843772bd24a6a9e0be2a32a788de5a3def330e9c585d86edd1"
+    }
   },
   {
     "id": "qwen3-8b",
@@ -162,7 +180,13 @@
     "tools": true,
     "system_suffix": "",
     "about": "Рекомендуемая для видеокарт от 8 ГБ.",
-    "verified": true
+    "verified": true,
+    "vision": {
+      "url": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/mmproj-F16.gguf",
+      "file": "Qwen3.5-9B-mmproj-F16.gguf",
+      "size": 918166080,
+      "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f"
+    }
   },
   {
     "id": "gemma4-12b",
@@ -177,7 +201,13 @@
     "tools": true,
     "system_suffix": "",
     "about": "Умная, отлично по-русски. На 10 ГБ видеопамяти часть слоёв считает процессор.",
-    "verified": true
+    "verified": true,
+    "vision": {
+      "url": "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/main/mmproj-F16.gguf",
+      "file": "gemma-4-12b-it-mmproj-F16.gguf",
+      "size": 175115840,
+      "sha256": "91f086971e56d7a7d8d39e271873fccdb49541bd259d6e02c401a4f1cb7a219e"
+    }
   },
   {
     "id": "qwen3-14b",

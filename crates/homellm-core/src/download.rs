@@ -35,7 +35,16 @@ pub async fn download(model: &ModelEntry, mut progress: impl FnMut(u64, u64)) ->
         )
         .await?;
     }
-    Ok(())
+    download_vision(model, |_, _| {}).await
+}
+
+/// The model's vision projector, when it has one; `progress(done, total)`.
+pub async fn download_vision(model: &ModelEntry, mut progress: impl FnMut(u64, u64)) -> Result<()> {
+    let Some(v) = &model.vision else {
+        return Ok(());
+    };
+    let client = reqwest::Client::builder().user_agent("HomeLLM").build()?;
+    fetch(&client, &v.url, &v.file, v.size, &v.sha256, &mut progress).await
 }
 
 async fn fetch(
