@@ -545,7 +545,7 @@ function applyTheme(theme) {
 
 async function fillSettings() {
   const s = await invoke("get_settings");
-  for (const key of ["music_dir", "music_search", "models_dir"]) form.elements[key].value = s[key] || "";
+  for (const key of ["music_dir", "music_search", "models_dir", "spotify_client_id"]) form.elements[key].value = s[key] || "";
   form.elements.theme.value = THEMES.includes(s.theme) ? s.theme : "mint";
   form.elements.autostart.checked = !!s.autostart;
   form.elements.quit_on_close.checked = !!s.quit_on_close;
@@ -553,8 +553,29 @@ async function fillSettings() {
   form.elements.show_pet.checked = !s.hide_pet;
   form.elements.mcp_servers.value = s.mcp_servers || "";
   showMemory();
+  showSpotify();
   applyTheme(s.theme);
 }
+
+async function showSpotify(text) {
+  const on = await invoke("spotify_connected");
+  $("spotify-status").textContent = text || (on ? "Spotify подключён" : "Spotify не подключён");
+  $("spotify-connect").textContent = on ? "Отключить Spotify" : "Подключить Spotify";
+}
+
+$("spotify-connect").onclick = async () => {
+  if (await invoke("spotify_connected")) {
+    await invoke("spotify_disconnect");
+    return showSpotify();
+  }
+  $("spotify-status").textContent = "Подтвердите доступ в открывшемся браузере…";
+  try {
+    const name = await invoke("spotify_connect", { clientId: form.elements.spotify_client_id.value });
+    showSpotify(`Spotify подключён: ${name}`);
+  } catch (err) {
+    showSpotify(`Ошибка: ${err}`);
+  }
+};
 
 // Preview a theme as soon as it is picked; closing without saving puts the saved one back.
 form.elements.theme.addEventListener("change", () => applyTheme(form.elements.theme.value));

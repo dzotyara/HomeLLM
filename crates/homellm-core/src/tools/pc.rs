@@ -22,10 +22,20 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "play_music",
-            description: "Включить музыку: песню, исполнителя или жанр. Без запроса — продолжить воспроизведение.",
-            parameters: || json!({"type": "object", "properties": {"query": {"type": "string"}}}),
+            description: "Включить музыку: песню, исполнителя, альбом, плейлист или жанр. kind — что ищем: track (песня, по умолчанию), artist, album или playlist (жанр, настроение). Без запроса — продолжить воспроизведение.",
+            parameters: || {
+                json!({"type": "object", "properties": {"query": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["track", "artist", "album", "playlist"]}}})
+            },
             risk: Risk::Safe,
             run: play_music,
+        },
+        Tool {
+            name: "now_playing",
+            description: "Что сейчас играет: исполнитель и название трека.",
+            parameters: || json!({"type": "object", "properties": {}}),
+            risk: Risk::Safe,
+            run: now_playing,
         },
         Tool {
             name: "open_url",
@@ -109,8 +119,8 @@ fn media(args: &Value) -> Result<String> {
     Ok("готово".into())
 }
 
-/// A local file from `HOMELLM_MUSIC_DIR` whose name contains the query, else a search
-/// on `HOMELLM_MUSIC_SEARCH` (Yandex Music by default).
+/// A local file from `HOMELLM_MUSIC_DIR` whose name contains the query, else Spotify when
+/// connected, else a search on `HOMELLM_MUSIC_SEARCH` (Yandex Music by default).
 fn play_music(args: &Value) -> Result<String> {
     let Ok(query) = arg(args, "query") else {
         press(Key::MediaPlayPause)?;
@@ -120,11 +130,63 @@ fn play_music(args: &Value) -> Result<String> {
         open::that_detached(&file)?;
         return Ok(format!("играет файл {}", file.display()));
     }
+    if crate::spotify::connected() {
+        return crate::spotify::play(query, args["kind"].as_str().unwrap_or_default());
+    }
     let search = crate::settings::value("HOMELLM_MUSIC_SEARCH", |s| s.music_search.clone())
         .unwrap_or_else(|| "https://music.yandex.ru/search?text=".into());
     let url = format!("{search}{}", encode(query));
     open::that_detached(&url)?;
     Ok(format!("открыт поиск: {url}"))
+}
+
+fn now_playing(_: &Value) -> Result<String> {
+    if crate::spotify::connected()
+        && let Ok(Some(playing)) = crate::spotify::now_playing()
+    {
+        return Ok(playing);
+    }
+    system_now_playing()
+}
+
+/// The player Windows shows in its media overlay: a browser tab, Spotify, Yandex Music, AIMP…
+#[cfg(windows)]
+fn system_now_playing() -> Result<String> {
+    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager as Manager;
+    use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status;
+
+    let manager = Manager::RequestAsync()?.join()?;
+    let Ok(session) = manager.GetCurrentSession() else {
+        return Ok("сейчас ничего не играет".into());
+    };
+    let props = session.TryGetMediaPropertiesAsync()?.join()?;
+    let title = props.Title()?.to_string_lossy();
+    let artist = props.Artist()?.to_string_lossy();
+    if title.is_empty() {
+        return Ok("сейчас ничего не играет".into());
+    }
+    let paused = if session.GetPlaybackInfo()?.PlaybackStatus()? == Status::Playing {
+        ""
+    } else {
+        " (на паузе)"
+    };
+    let player = session.SourceAppUserModelId()?.to_string_lossy();
+    let player = player
+        .rsplit(['\\', '!'])
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(".exe");
+    let track = if artist.is_empty() {
+        title
+    } else {
+        format!("{artist} — {title}")
+    };
+    Ok(format!("{track}{paused}, плеер: {player}"))
+}
+
+#[cfg(not(windows))]
+fn system_now_playing() -> Result<String> {
+    bail!("узнать, что играет, пока можно только в Windows или через Spotify")
 }
 
 fn find_local_track(query: &str) -> Option<std::path::PathBuf> {

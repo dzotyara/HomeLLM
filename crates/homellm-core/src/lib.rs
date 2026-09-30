@@ -9,6 +9,7 @@ pub mod engine;
 pub mod hardware;
 pub mod mcp;
 pub mod settings;
+pub mod spotify;
 pub mod tools;
 
 use std::path::PathBuf;

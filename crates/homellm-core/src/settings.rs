@@ -50,12 +50,20 @@ pub struct Settings {
     /// MCP servers, one per line: `name: command args…`.
     #[serde(default)]
     pub mcp_servers: String,
+    /// The Client ID of the user's own app on developer.spotify.com (not a secret).
+    #[serde(default)]
+    pub spotify_client_id: String,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);
 
 fn file() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", "HomeLLM").map(|d| d.config_dir().join("settings.json"))
+    config_file("settings.json")
+}
+
+/// A file in the app's config folder, next to the settings.
+pub fn config_file(name: &str) -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "HomeLLM").map(|d| d.config_dir().join(name))
 }
 
 pub fn get() -> Settings {

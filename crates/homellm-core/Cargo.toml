@@ -19,10 +19,12 @@ anyhow.workspace = true
 arboard.workspace = true
 chrono.workspace = true
 async-trait.workspace = true
+base64 = "0.22"
 directories.workspace = true
 encoding_rs = { version = "0.8", optional = true }
 enigo.workspace = true
 futures-util.workspace = true
+getrandom = "0.3"
 llama-cpp-2 = { workspace = true, optional = true }
 open.workspace = true
 regex.workspace = true
@@ -33,6 +35,10 @@ sha2.workspace = true
 sysinfo.workspace = true
 tokio.workspace = true
 ureq.workspace = true
+
+# «What plays now» from Windows' media overlay, whatever the player.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Foundation", "Media_Control"] }
 
 # llama-cpp-2 does not re-export the Vulkan switch: enable it on the sys crate directly.
 [target.'cfg(not(target_os = "macos"))'.dependencies]

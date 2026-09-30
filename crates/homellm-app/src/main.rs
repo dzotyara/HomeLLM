@@ -1022,6 +1022,28 @@ async fn reconnect_mcp(app: AppHandle) -> Vec<String> {
     connect_mcp(&app).await
 }
 
+/// Saves the Client ID and runs Spotify's login in the browser; returns the account's name.
+#[tauri::command]
+async fn spotify_connect(client_id: String) -> Result<String, String> {
+    let mut s = settings::get();
+    s.spotify_client_id = client_id.trim().to_string();
+    settings::save(s).map_err(err_text)?;
+    tauri::async_runtime::spawn_blocking(move || homellm_core::spotify::login(&client_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err_text)
+}
+
+#[tauri::command]
+fn spotify_disconnect() {
+    homellm_core::spotify::disconnect();
+}
+
+#[tauri::command]
+fn spotify_connected() -> bool {
+    homellm_core::spotify::connected()
+}
+
 #[tauri::command]
 fn save_settings(app: AppHandle, value: Settings) -> Result<(), String> {
     if value.autostart != settings::get().autostart {
@@ -1144,7 +1166,10 @@ fn main() {
             open_models_dir,
             answer,
             get_settings,
-            save_settings
+            save_settings,
+            spotify_connect,
+            spotify_disconnect,
+            spotify_connected
         ])
         .run(tauri::generate_context!())
         .expect("failed to start HomeLLM");

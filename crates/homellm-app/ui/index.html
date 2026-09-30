@@ -84,6 +84,10 @@
         <small id="mcp-status">Инструменты MCP-серверов станут доступны модели; каждый вызов спросит подтверждение.</small>
       </label>
       <label>Папка с музыкой<input name="music_dir" placeholder="C:\Users\me\Music"><small>Сначала ищу песню здесь, потом на сайте ниже.</small></label>
+      <label>Spotify Client ID<input name="spotify_client_id" placeholder="из приложения на developer.spotify.com">
+        <small>Нужен Spotify Premium. Создайте приложение на developer.spotify.com (Web API), в Redirect URIs добавьте <code>http://127.0.0.1:8898/callback</code>, скопируйте сюда его Client ID. Тогда песни будут включаться сразу в Spotify.</small>
+      </label>
+      <div class="row"><span id="spotify-status" class="hint"></span><button type="button" id="spotify-connect">Подключить Spotify</button></div>
       <label>Сайт для поиска музыки<input name="music_search" placeholder="https://music.yandex.ru/search?text="></label>
       <label>Папка для моделей<input name="models_dir" placeholder="по умолчанию — папка данных приложения"><small>Уже скачанные модели сами не переедут.</small></label>
       <div class="row"><span id="saved" class="hint"></span><button type="submit" class="primary">Сохранить</button></div>

@@ -42,6 +42,8 @@ enum Command {
         #[arg(long, requires = "server")]
         server_model: Option<String>,
     },
+    /// Подключить Spotify (Premium): Client ID своего приложения на developer.spotify.com
+    Spotify { client_id: String },
 }
 
 #[tokio::main]
@@ -55,7 +57,22 @@ async fn main() -> Result<()> {
             server,
             server_model,
         } => chat(model, server, server_model).await,
+        Command::Spotify { client_id } => spotify(client_id),
     }
+}
+
+fn spotify(client_id: String) -> Result<()> {
+    let mut s = homellm_core::settings::get();
+    s.spotify_client_id = client_id.clone();
+    homellm_core::settings::save(s)?;
+    println!(
+        "Redirect URI приложения должен быть {}
+Подтвердите доступ в браузере…",
+        homellm_core::spotify::REDIRECT_URI
+    );
+    let name = homellm_core::spotify::login(&client_id)?;
+    println!("Spotify подключён: {name}");
+    Ok(())
 }
 
 fn hw() -> Result<()> {
