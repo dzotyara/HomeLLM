@@ -4,6 +4,7 @@
 mod desktop;
 mod files;
 mod pc;
+mod system;
 mod web;
 
 use anyhow::Result;
@@ -30,6 +31,7 @@ pub fn all() -> Vec<Tool> {
     let mut tools = pc::tools();
     tools.extend(files::tools());
     tools.extend(desktop::tools());
+    tools.extend(system::tools());
     if crate::settings::get().web_search {
         tools.extend(web::tools());
     }

@@ -15,6 +15,7 @@
     </symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="1.8" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></g></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
@@ -30,6 +31,7 @@
     <div class="header-right">
       <span id="download-chip" class="chip hidden"></span>
       <span id="gpu-chip" class="chip"><svg class="ico"><use href="#i-chip"/></svg><span id="gpu-name">…</span></span>
+      <button id="auto-btn" class="icon-btn" title="Автоматизации — действия по расписанию"><svg class="ico"><use href="#i-clock"/></svg></button>
       <button id="settings-btn" class="icon-btn" title="Настройки"><svg class="ico"><use href="#i-gear"/></svg></button>
     </div>
   </header>
@@ -97,6 +99,34 @@
     </form>
   </dialog>
 
+  <dialog id="auto-dialog" class="panel">
+    <div class="panel-head"><h3>Автоматизации</h3><form method="dialog"><button class="icon-btn" aria-label="Закрыть">✕</button></form></div>
+    <p class="hint">Действия по расписанию: закрыть программы, выключить компьютер, включить музыку… Выполняются сами, без вопросов, пока HomeLLM запущен (можно свёрнутым в трей).</p>
+    <div id="auto-list"></div>
+
+    <div class="group" id="auto-form-title">Новая автоматизация</div>
+    <form id="auto-form" class="auto-form">
+      <div class="auto-line">
+        <input name="name" placeholder="Название, например «Конец рабочего дня»" required>
+        <input name="time" type="time" value="10:00" required>
+      </div>
+      <div class="auto-line">
+        <div id="auto-days" class="days" title="Ни одного дня — каждый день"></div>
+        <label class="check"><input type="checkbox" name="once"> один раз</label>
+      </div>
+      <div id="auto-steps"></div>
+      <button type="button" id="auto-add-step" class="add-step">+ Действие</button>
+      <div class="row"><span id="auto-saved" class="hint"></span><button type="button" id="auto-cancel" hidden>Отмена</button><button type="submit" class="primary">Сохранить</button></div>
+    </form>
+
+    <div class="group">Или опишите словами</div>
+    <div class="auto-line">
+      <input id="auto-text" placeholder="По будням в 18:00 сохрани и закрой Word, потом выключи компьютер">
+      <button type="button" id="auto-describe" class="primary">Составить</button>
+    </div>
+    <p class="hint">Модель разберёт фразу в чате и создаст автоматизацию — она появится в списке выше.</p>
+  </dialog>
+
   <dialog id="confirm" class="panel small">
     <form method="dialog">
       <h3>Разрешить действие?</h3>
@@ -106,5 +136,6 @@
   </dialog>
 
   <script src="app.js"></script>
+  <script src="automations.js"></script>
 </body>
 </html>

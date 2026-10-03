@@ -217,6 +217,28 @@ button:disabled { opacity: .5; cursor: default; }
 .badge.TooBig { color: var(--bad); border-color: var(--bad); }
 .badge.rec { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 progress { width: 150px; height: 6px; accent-color: var(--accent); }
+/* automations */
+.auto { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; background: var(--raised); }
+.auto.off { opacity: .6; }
+.auto-head { display: flex; align-items: center; gap: 10px; }
+.auto-head input { accent-color: var(--accent); width: 16px; height: 16px; }
+.auto-head .badge { margin-left: auto; }
+.auto-steps { font-size: 13px; margin: 6px 0 2px 26px; }
+.auto .hint { margin-left: 26px; }
+.auto-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.auto-actions button, .add-step, #auto-cancel, #auto-describe { padding: 5px 12px; border-radius: 9px; border: 1px solid var(--line); font-size: 13px; }
+.auto-form { display: flex; flex-direction: column; gap: 10px; }
+.auto-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.auto-line > input:not([type]) , .auto-line > input[name=name], #auto-text { flex: 1; min-width: 200px; }
+.auto-form label.check, .step label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.days { display: flex; gap: 4px; }
+.day input { display: none; }
+.day span { display: inline-block; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); font-size: 12.5px; cursor: pointer; }
+.day input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.step { display: grid; grid-template-columns: 190px 1fr auto; gap: 8px; align-items: start; }
+.step-fields { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.step-fields input:not([type=checkbox]) { flex: 1; min-width: 140px; }
+.add-step { align-self: flex-start; }
 #settings-form { display: flex; flex-direction: column; gap: 14px; }
 #settings-form label { display: flex; flex-direction: column; gap: 5px; font-weight: 600; font-size: 13.5px; }
 #settings-form small { font-weight: 400; color: var(--muted); }

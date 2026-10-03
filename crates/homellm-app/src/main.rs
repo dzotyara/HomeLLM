@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod automations;
 mod chats;
 mod memory;
 mod reminders;
@@ -112,6 +113,13 @@ impl ToolHost for AppTools {
             json!({"name": "forget", "description": "Забыть факты о пользователе, в которых есть эти слова.",
                    "parameters": {"type": "object", "properties": {"about": {"type": "string"}}, "required": ["about"]}}),
             json!({"name": "list_reminders", "description": "Какие напоминания стоят.", "parameters": {"type": "object", "properties": {}}}),
+            json!({"name": "create_automation", "description": "Создать автоматизацию — действия по расписанию («в 10:00 сохрани и закрой Word, потом выключи комп»). time «ЧЧ:ММ»; days — дни недели 1=пн…7=вс, пусто = каждый день; once=true — один раз. steps: [{\"tool\": имя инструмента, \"args\": {...}}] — например close_app {app, save}, power {action}, wait {seconds}, media, play_music, open_app, open_url, press_keys, notify {text}.",
+                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "time": {"type": "string"},
+                       "days": {"type": "array", "items": {"type": "integer"}}, "once": {"type": "boolean"},
+                       "steps": {"type": "array", "items": {"type": "object"}}}, "required": ["name", "time", "steps"]}}),
+            json!({"name": "list_automations", "description": "Какие автоматизации есть и когда срабатывают.", "parameters": {"type": "object", "properties": {}}}),
+            json!({"name": "delete_automation", "description": "Удалить автоматизацию по названию.",
+                   "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}),
             json!({"name": "set_setting", "description": "Изменить настройку приложения. theme: mint (ночь и мята), lime (графит и лайм), violet (полночь и фиалка), amber (тёплый янтарь).",
                    "parameters": {"type": "object", "properties": {
                        "key": {"type": "string", "enum": ["music_dir", "music_search", "models_dir", "theme"]},
@@ -223,15 +231,10 @@ impl ToolHost for AppTools {
                 let name = args["name"].as_str().unwrap_or_default().trim().to_string();
                 let steps: Vec<scenarios::Step> =
                     serde_json::from_value(args["steps"].clone()).unwrap_or_default();
-                let unknown: Vec<&str> = steps
-                    .iter()
-                    .map(|s| s.tool.as_str())
-                    .filter(|t| homellm_core::tools::find(t).is_none() && !HOST_STEPS.contains(t))
-                    .collect();
                 if name.is_empty() || steps.is_empty() {
                     "ошибка: нужны имя и хотя бы одно действие".into()
-                } else if !unknown.is_empty() {
-                    format!("ошибка: нет инструментов {}", unknown.join(", "))
+                } else if let Some(error) = unknown_steps(&steps) {
+                    error
                 } else {
                     let count = steps.len();
                     scenarios::save(scenarios::Scenario {
@@ -295,6 +298,83 @@ impl ToolHost for AppTools {
                     "нет такого сценария".into()
                 }
             }
+            "create_automation" => {
+                let mut value = args.clone();
+                value["enabled"] = json!(true);
+                match serde_json::from_value::<automations::Automation>(value) {
+                    Err(e) => format!("ошибка: {e}"),
+                    Ok(automation) => match unknown_steps(&automation.steps) {
+                        Some(error) => error,
+                        None => match automations::save(automation) {
+                            Ok(a) => {
+                                let _ = self.app.emit("automations-changed", ());
+                                format!(
+                                    "автоматизация «{}» создана: {}, {} действий; видна во вкладке «Автоматизации»",
+                                    a.name,
+                                    automations::when(&a),
+                                    a.steps.len()
+                                )
+                            }
+                            Err(e) => format!("ошибка: {e}"),
+                        },
+                    },
+                }
+            }
+            "list_automations" => {
+                let all = automations::load();
+                if all.is_empty() {
+                    "автоматизаций нет".into()
+                } else {
+                    all.iter()
+                        .map(|a| {
+                            let state = if a.enabled {
+                                ""
+                            } else {
+                                " (выключена)"
+                            };
+                            let steps: Vec<&str> =
+                                a.steps.iter().map(|s| s.tool.as_str()).collect();
+                            format!(
+                                "{} — {}{state}: {}",
+                                a.name,
+                                automations::when(a),
+                                steps.join(", ")
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
+            "delete_automation" => {
+                let name = args["name"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_lowercase();
+                match automations::load()
+                    .into_iter()
+                    .find(|a| a.name.to_lowercase() == name)
+                {
+                    Some(a) => {
+                        automations::delete(a.id);
+                        let _ = self.app.emit("automations-changed", ());
+                        format!("автоматизация «{}» удалена", a.name)
+                    }
+                    None => "нет такой автоматизации".into(),
+                }
+            }
+            "notify" => {
+                use tauri_plugin_notification::NotificationExt;
+                let text = args["text"].as_str().unwrap_or_default();
+                let _ = self
+                    .app
+                    .notification()
+                    .builder()
+                    .title("HomeLLM")
+                    .body(text)
+                    .show();
+                "уведомление показано".into()
+            }
             "remember" => {
                 let fact = args["fact"].as_str().unwrap_or_default();
                 if memory::remember(fact) {
@@ -348,7 +428,53 @@ impl ToolHost for AppTools {
 /// Downloads a model; remembered in the settings until it finishes, so a download cut by
 /// closing the app resumes on the next start.
 /// App tools a scenario may include (not the ones that manage scenarios themselves).
-const HOST_STEPS: &[&str] = &["remind", "set_setting", "switch_model"];
+const HOST_STEPS: &[&str] = &["remind", "set_setting", "switch_model", "notify"];
+
+/// `None` when every step names a known tool, else the error for the model.
+fn unknown_steps(steps: &[scenarios::Step]) -> Option<String> {
+    let unknown: Vec<&str> = steps
+        .iter()
+        .map(|s| s.tool.as_str())
+        .filter(|t| homellm_core::tools::find(t).is_none() && !HOST_STEPS.contains(t))
+        .collect();
+    (!unknown.is_empty()).then(|| format!("ошибка: нет инструментов {}", unknown.join(", ")))
+}
+
+/// Runs an automation without asking: its steps were approved when it was made. PC tools run
+/// off the async threads (a `wait` may take minutes).
+async fn run_automation(app: AppHandle, automation: automations::Automation) -> String {
+    let tools = AppTools { app: app.clone() };
+    let mut report = vec![];
+    for step in &automation.steps {
+        let result = if homellm_core::tools::find(&step.tool).is_some() {
+            let step = step.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let tool = homellm_core::tools::find(&step.tool).expect("checked above");
+                (tool.run)(&step.args).unwrap_or_else(|e| format!("ошибка: {e}"))
+            })
+            .await
+            .unwrap_or_else(|e| format!("ошибка: {e}"))
+        } else if HOST_STEPS.contains(&step.tool.as_str()) {
+            tools.call(&step.tool, &step.args).await.unwrap_or_default()
+        } else {
+            format!("нет инструмента {}", step.tool)
+        };
+        report.push(format!("{}: {result}", step.tool));
+    }
+    let report = report.join("\n");
+    automations::finished(automation.id, &automations::stamp(), &report);
+    let _ = app.emit("automations-changed", ());
+    {
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app
+            .notification()
+            .builder()
+            .title(format!("HomeLLM — «{}»", automation.name))
+            .body(report.lines().last().unwrap_or("выполнено"))
+            .show();
+    }
+    report
+}
 
 impl AppTools {
     /// MCP tools for the prompt.
@@ -1047,6 +1173,53 @@ fn push_to_talk(app: &AppHandle, pressed: bool) {
     });
 }
 
+// ---------- automations tab ----------
+
+#[tauri::command]
+fn list_automations() -> Vec<Value> {
+    automations::load()
+        .into_iter()
+        .map(|a| {
+            let when = automations::when(&a);
+            let mut v = serde_json::to_value(a).unwrap_or_default();
+            v["when"] = json!(when);
+            v
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn save_automation(app: AppHandle, automation: automations::Automation) -> Result<Value, String> {
+    if let Some(error) = unknown_steps(&automation.steps) {
+        return Err(error);
+    }
+    let saved = automations::save(automation)?;
+    let _ = app.emit("automations-changed", ());
+    Ok(serde_json::to_value(saved).unwrap_or_default())
+}
+
+#[tauri::command]
+fn delete_automation(app: AppHandle, id: u64) {
+    automations::delete(id);
+    let _ = app.emit("automations-changed", ());
+}
+
+#[tauri::command]
+fn toggle_automation(app: AppHandle, id: u64, enabled: bool) {
+    automations::set_enabled(id, enabled);
+    let _ = app.emit("automations-changed", ());
+}
+
+/// «Запустить сейчас»: the same unattended run as on schedule.
+#[tauri::command]
+async fn run_automation_now(app: AppHandle, id: u64) -> Result<String, String> {
+    let automation = automations::load()
+        .into_iter()
+        .find(|a| a.id == id)
+        .ok_or("нет такой автоматизации")?;
+    Ok(run_automation(app, automation).await)
+}
+
 #[tauri::command]
 fn voice_start(app: AppHandle) -> Result<(), String> {
     start_listening(&app)
@@ -1298,6 +1471,18 @@ fn main() {
                     eprintln!("catalog refresh skipped: {e:#}");
                 }
             });
+            // Automations on their schedule: checked twice a minute, each runs once per minute.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    for automation in automations::due_now() {
+                        // Marked at once, so the next check does not start it again.
+                        automations::finished(automation.id, &automations::stamp(), "выполняется…");
+                        tauri::async_runtime::spawn(run_automation(handle.clone(), automation));
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                }
+            });
             // Fire due reminders: a system notification plus a line in the chat.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -1359,6 +1544,11 @@ fn main() {
             spotify_connected,
             voice_start,
             voice_stop,
+            list_automations,
+            save_automation,
+            delete_automation,
+            toggle_automation,
+            run_automation_now,
             speak,
             stop_speaking
         ])

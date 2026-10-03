@@ -68,6 +68,16 @@ pub fn tools() -> Vec<Tool> {
             run: press_keys,
         },
         Tool {
+            name: "close_app",
+            description: "Закрыть программу (все её окна), как крестиком. save=true — сначала сохранить (Ctrl+S в каждом окне). force=true — завершить принудительно, если не закрывается (несохранённое пропадёт).",
+            parameters: || {
+                json!({"type": "object", "properties": {"app": {"type": "string"}, "save": {"type": "boolean"},
+                    "force": {"type": "boolean"}}, "required": ["app"]})
+            },
+            risk: Risk::Confirm,
+            run: close_app,
+        },
+        Tool {
             name: "type_text",
             description: "Напечатать текст в окне (в поле, где стоит курсор); enter=true — нажать Enter после.",
             parameters: || {
@@ -198,6 +208,50 @@ fn type_text(args: &Value) -> Result<String> {
     Ok(format!("напечатано в окне {}", w.app))
 }
 
+fn close_app(args: &Value) -> Result<String> {
+    let query = args["app"]
+        .as_str()
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| anyhow!("missing argument `app`"))?;
+    let target = pick(platform::windows()?, Some(query))?;
+    let app = target.app.clone();
+    let of_app =
+        |all: Vec<Window>| -> Vec<Window> { all.into_iter().filter(|w| w.app == app).collect() };
+    let windows = of_app(platform::windows()?);
+    if args["save"].as_bool().unwrap_or(false) {
+        let mut enigo = enigo()?;
+        for w in &windows {
+            platform::focus(Some(&w.title))?;
+            press_combo(&mut enigo, &[Key::Control], char_key('s'))?;
+            // A save may take a moment, or open a «Save as» dialog for a new file.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+    }
+    for w in &windows {
+        platform::close(w);
+    }
+    // Programs ask «save changes?» or take a while to quit: wait a little.
+    for _ in 0..16 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if of_app(platform::windows()?).is_empty() {
+            return Ok(format!("{app} закрыта"));
+        }
+    }
+    if args["force"].as_bool().unwrap_or(false) {
+        platform::kill(&app)?;
+        return Ok(format!("{app} завершена принудительно"));
+    }
+    let left: Vec<String> = of_app(platform::windows()?)
+        .into_iter()
+        .map(|w| w.title)
+        .collect();
+    Ok(format!(
+        "{app} не закрылась — открыто: {}. Возможно, она спрашивает, сохранить ли изменения: посмотри read_window",
+        left.join("; ")
+    ))
+}
+
 fn press_combo(enigo: &mut Enigo, mods: &[Key], key: Key) -> Result<()> {
     let err = |e: enigo::InputError| anyhow!("{e}");
     for m in mods {
@@ -321,6 +375,7 @@ mod platform {
     use std::time::{Duration, Instant};
 
     use anyhow::{Result, anyhow, bail};
+    use windows::Win32::Foundation::WPARAM;
     use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
     use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
     use windows::Win32::System::Com::{
@@ -333,8 +388,8 @@ mod platform {
     use windows::Win32::UI::Accessibility::*;
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SetForegroundWindow,
-        ShowWindow, WS_EX_TOOLWINDOW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, SW_RESTORE,
+        SetForegroundWindow, ShowWindow, WM_CLOSE, WS_EX_TOOLWINDOW,
     };
     use windows::core::{BOOL, PWSTR};
 
@@ -470,6 +525,24 @@ mod platform {
             );
         }
         Ok(w)
+    }
+
+    /// Asks the window to close, as its close button does: the program may still ask to save.
+    pub fn close(w: &Window) {
+        // SAFETY: posting a message to a window handle; a closed window just fails it.
+        let _ = unsafe { PostMessageW(Some(hwnd(w)), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    }
+
+    pub fn kill(app: &str) -> Result<()> {
+        use std::os::windows::process::CommandExt;
+        let status = std::process::Command::new("taskkill")
+            .args(["/IM", app, "/F"])
+            .creation_flags(0x0800_0000)
+            .status()?;
+        if !status.success() {
+            bail!("не удалось завершить {app}");
+        }
+        Ok(())
     }
 
     /// UI Automation runs on its own thread with COM initialised there.
@@ -714,6 +787,10 @@ mod platform {
         bail!(ONLY_WINDOWS)
     }
     pub fn click(_: &Window, _: &str) -> Result<String> {
+        bail!(ONLY_WINDOWS)
+    }
+    pub fn close(_: &Window) {}
+    pub fn kill(_: &str) -> Result<()> {
         bail!(ONLY_WINDOWS)
     }
 }
