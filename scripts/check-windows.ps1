@@ -62,11 +62,11 @@ if ($vulkan) {
 }
 
 # Path length: MSBuild's file tracker keeps the 260-character limit even with Windows' long
-# paths on, and llama.cpp's Vulkan shaders build nests deep: MSB8066 / FTK1011 on long paths.
+# paths on, and CMake's builds under target/ nest deep: FTK1011 on long paths.
 $here = (Get-Location).Path
 $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $here "target" }
 if ($target.Length -gt 22) {
-    Warn "Папка сборки $target — длинный путь ($($target.Length) символов): сборка с Vulkan может падать с MSB8066 / FTK1011" `
+    Warn "Папка сборки $target — длинный путь ($($target.Length) символов): сборка с Vulkan может упасть с FTK1011 (лимит путей MSBuild)" `
         "Склонируйте проект в короткую папку (например C:\src\HomeLLM) или собирайте в короткую: `$env:CARGO_TARGET_DIR = 'C:\t'"
 } else {
     Report $true "Путь к сборке короткий: $target"

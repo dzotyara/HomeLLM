@@ -30,15 +30,13 @@ cmake --version
 
 ## 2. Код и сборка
 
-Клонируйте в папку с **коротким путём** (например `C:\src`): у сборщика Visual Studio лимит в 260 символов
-на путь, и сборка llama.cpp с Vulkan в глубоко вложенной папке падает с `MSB8066`.
-
 ```powershell
-mkdir C:\src
-cd C:\src
 git clone https://github.com/dzotyara/HomeLLM
 cd HomeLLM
 ```
+
+Лучше в папку с коротким путём (например `C:\src\HomeLLM`): у трекера файлов Visual Studio лимит в
+260 символов на путь, и в глубоко вложенной папке сборка может упасть с `FTK1011`.
 
 Проверьте, что всё установлено (скрипт ничего не меняет, только подсказывает, чего не хватает):
 
@@ -52,9 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts\check-windows.ps1
 cargo build --release
 ```
 
-Первая сборка идёт 5–15 минут (собирается llama.cpp с Vulkan). Если она упала с ошибкой
-`MSB8066 ... vulkan-shaders-gen`, запустите `cargo build --release` ещё раз; если падает снова — путь к папке
-слишком длинный: перенесите проект в короткую папку или задайте `$env:CARGO_TARGET_DIR = "C:\t"`.
+Первая сборка идёт 5–15 минут (собирается llama.cpp с Vulkan).
 
 Без видеокарты или без Vulkan SDK — сборка только на процессоре:
 
@@ -98,7 +94,8 @@ cargo build --release -p homellm-app --no-default-features
 | `cargo`, `cmake` «не найдено» | Откройте новый терминал после установки |
 | `Access is denied` при сборке | Закройте запущенный HomeLLM — Windows не даёт перезаписать открытую программу |
 | `Unable to find libclang` | Не установлен LLVM: `winget install --id LLVM.LLVM -e`, новый терминал; если не помогло — шаг с `LIBCLANG_PATH` выше |
-| `MSB8066 vulkan-shaders-gen`, `FTK1011` | Повторите `cargo build --release`; не помогло — короткий путь к проекту (см. шаг 2) |
+| `MSB8066 vulkan-shaders-gen` | Обновите код (`git pull`): исправлено файлом `Directory.Build.targets`; потом `cargo build --release` |
+| `FTK1011 could not create the new file tracking log` | Слишком длинный путь: перенесите проект в короткую папку или задайте `$env:CARGO_TARGET_DIR = "C:\t"` |
 | Не знаете, чего не хватает | `powershell -ExecutionPolicy Bypass -File scripts\check-windows.ps1` |
 | Загрузка модели оборвалась | Нажмите «Скачать» ещё раз — продолжится с места обрыва |
 | Модель отвечает странно, путает команды | Маленькие модели (1–2B) слабые: возьмите 8B и больше |

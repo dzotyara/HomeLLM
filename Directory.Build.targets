@@ -1,0 +1,19 @@
+<!--
+  MSBuild picks this file up for every Visual Studio project under the repository, including
+  the ones CMake generates while llama.cpp builds in target/.
+
+  CMake 4 marks custom build steps BuildInParallel, and MSBuild then runs the steps of
+  llama.cpp's vulkan-shaders-gen ExternalProject (configure, build, install) all at once: the
+  install step looked for files the configure step had not written yet, and the first Vulkan
+  build failed with MSB8066 ("Not a file: ...vulkan-shaders-gen-build/cmake_install.cmake").
+  Running the custom steps one after another fixes it; real compilation stays parallel.
+-->
+<Project>
+  <Target Name="HomeLLMSerialCustomBuild" BeforeTargets="CustomBuild">
+    <ItemGroup>
+      <CustomBuild>
+        <BuildInParallel>false</BuildInParallel>
+      </CustomBuild>
+    </ItemGroup>
+  </Target>
+</Project>

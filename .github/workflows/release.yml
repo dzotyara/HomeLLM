@@ -25,10 +25,14 @@ jobs:
           - os: macos-latest
             cargo_args: ""
     runs-on: ${{ matrix.os }}
-    env:
-      LIBCLANG_PATH: ${{ matrix.os == 'windows-latest' && 'C:\Program Files\LLVM\bin' || '' }}
     steps:
       - uses: actions/checkout@v4
+      # Windows only: an empty LIBCLANG_PATH elsewhere makes bindgen look nowhere else
+      # («Unable to find libclang ... invalid: []»).
+      - name: libclang
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4

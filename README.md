@@ -106,10 +106,10 @@ cargo build --release
   (только проверяет, ничего не ставит). Пошагово — [docs/QUICKSTART.md](docs/QUICKSTART.md).
 - `Unable to find libclang`: не установлен LLVM (`winget install --id LLVM.LLVM -e`); если установлен в нестандартное
   место — `set LIBCLANG_PATH=<папка с libclang.dll>`.
-- На Windows сборка с Vulkan падает на `vulkan-shaders-gen` (MSB8066, FTK1011), когда путь к папке сборки
-  слишком длинный: у трекера файлов MSBuild лимит в 260 символов даже с включёнными длинными путями Windows.
-  Держите проект в короткой папке (`C:\src\HomeLLM`) или задайте `CARGO_TARGET_DIR=C:\t`; разовый сбой лечится
-  повторным `cargo build`.
+- `MSB8066` на `vulkan-shaders-gen` (Windows) была гонкой: CMake 4 помечает шаги сборки параллельными, и MSBuild
+  запускал установку раньше конфигурации. `Directory.Build.targets` в корне выстраивает эти шаги по очереди.
+- `FTK1011` (Windows): у трекера файлов MSBuild лимит в 260 символов на путь даже с включёнными длинными путями
+  Windows — держите проект в короткой папке (`C:\src\HomeLLM`) или задайте `CARGO_TARGET_DIR=C:\t`.
 
 ## Использование
 
