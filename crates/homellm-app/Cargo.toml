@@ -22,7 +22,7 @@ pdf-extract = "0.12"
 homellm-core = { path = "../homellm-core", default-features = false, features = ["llama-cpu"] }
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2.12", features = ["tray-icon"] }
+tauri = { version = "2.12", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-autostart = "2.6"
 tauri-plugin-global-shortcut = "2.4"
 tauri-plugin-notification = "2.5"
