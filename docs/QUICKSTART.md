@@ -30,14 +30,31 @@ cmake --version
 
 ## 2. Код и сборка
 
+Клонируйте в папку с **коротким путём** (например `C:\src`): у сборщика Visual Studio лимит в 260 символов
+на путь, и сборка llama.cpp с Vulkan в глубоко вложенной папке падает с `MSB8066`.
+
 ```powershell
+mkdir C:\src
+cd C:\src
 git clone https://github.com/dzotyara/HomeLLM
 cd HomeLLM
+```
+
+Проверьте, что всё установлено (скрипт ничего не меняет, только подсказывает, чего не хватает):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check-windows.ps1
+```
+
+Сборка:
+
+```powershell
 cargo build --release
 ```
 
 Первая сборка идёт 5–15 минут (собирается llama.cpp с Vulkan). Если она упала с ошибкой
-`MSB8066 ... vulkan-shaders-gen` — это известный сбой, просто запустите `cargo build --release` ещё раз.
+`MSB8066 ... vulkan-shaders-gen`, запустите `cargo build --release` ещё раз; если падает снова — путь к папке
+слишком длинный: перенесите проект в короткую папку или задайте `$env:CARGO_TARGET_DIR = "C:\t"`.
 
 Без видеокарты или без Vulkan SDK — сборка только на процессоре:
 
@@ -80,8 +97,9 @@ cargo build --release -p homellm-app --no-default-features
 |---|---|
 | `cargo`, `cmake` «не найдено» | Откройте новый терминал после установки |
 | `Access is denied` при сборке | Закройте запущенный HomeLLM — Windows не даёт перезаписать открытую программу |
-| `Unable to find libclang` | Шаг с `LIBCLANG_PATH` выше, потом новый терминал |
-| `MSB8066 vulkan-shaders-gen` | Повторите `cargo build --release` |
+| `Unable to find libclang` | Не установлен LLVM: `winget install --id LLVM.LLVM -e`, новый терминал; если не помогло — шаг с `LIBCLANG_PATH` выше |
+| `MSB8066 vulkan-shaders-gen`, `FTK1011` | Повторите `cargo build --release`; не помогло — короткий путь к проекту (см. шаг 2) |
+| Не знаете, чего не хватает | `powershell -ExecutionPolicy Bypass -File scripts\check-windows.ps1` |
 | Загрузка модели оборвалась | Нажмите «Скачать» ещё раз — продолжится с места обрыва |
 | Модель отвечает странно, путает команды | Маленькие модели (1–2B) слабые: возьмите 8B и больше |
 | В PowerShell ошибка про `&&` | Windows PowerShell 5.1 не знает `&&` — выполняйте команды по одной |
