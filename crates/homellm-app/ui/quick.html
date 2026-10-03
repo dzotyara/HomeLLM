@@ -93,28 +93,58 @@
   $("yes").onclick = () => answer(true);
   $("no").onclick = () => answer(false);
 
-  $("form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = $("q").value.trim();
+  /** `spoken`: asked by voice, so the answer is read aloud too. */
+  async function ask(text, spoken = false) {
+    text = text.trim();
     if (!text || busy) return;
     busy = true;
     raw = "";
     actions = "";
     show("…");
     try {
-      show(await invoke("send", { text }), actions);
+      const answer = await invoke("send", { text });
+      show(visible(answer), actions);
       $("q").value = "";
+      if (spoken) invoke("speak", { text: visible(answer) }).catch(() => {});
     } catch (err) {
       show(String(err));
     }
     busy = false;
+  }
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    ask($("q").value);
+  });
+
+  // Push-to-talk (Ctrl+Alt+Space held): the app records, recognises and sends the text here.
+  const placeholder = $("q").placeholder;
+  listen("voice", ({ payload }) => {
+    if (payload.state === "listening") {
+      $("q").value = "";
+      $("q").placeholder = "Слушаю… отпустите клавиши, когда договорите";
+    } else if (payload.state === "thinking") {
+      $("q").placeholder = "Распознаю речь…";
+    } else {
+      $("q").placeholder = placeholder;
+      if (payload.state === "heard") {
+        $("q").value = payload.text;
+        ask(payload.text, true);
+      } else {
+        show(payload.text);
+      }
+    }
   });
 
   $("full").onclick = async () => {
     await invoke("show_main_window");
     win.hide();
   };
-  document.addEventListener("keydown", (e) => e.key === "Escape" && win.hide());
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    invoke("stop_speaking");
+    win.hide();
+  });
   listen("quick-open", () => {
     $("q").focus();
     $("q").select();

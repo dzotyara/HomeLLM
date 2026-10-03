@@ -1,0 +1,11 @@
+[package]
+name = "homellm-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+piper-rs = "0.2"
+rodio = { version = "0.21", default-features = false, features = ["playback"] }
+whisper-rs = "0.16"

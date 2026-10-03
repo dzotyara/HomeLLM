@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "externalBin": [
+      "binaries/homellm-voice"
+    ],
+    "resources": {
+      "voice/espeak-ng-data/": "espeak-ng-data/"
+    }
+  }
+}

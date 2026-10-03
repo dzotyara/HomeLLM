@@ -229,7 +229,8 @@ listen("tauri://drag-drop", async ({ payload }) => {
   $("input").focus();
 });
 
-async function submit(text) {
+/** `spoken`: the question came by voice, so the answer is read aloud. */
+async function submit(text, spoken = false) {
   text = text.trim();
   const images = attachments.filter((a) => a.image);
   const files = attachments.filter((a) => !a.image);
@@ -255,6 +256,7 @@ async function submit(text) {
     const answer = await invoke("send", { text, images: images.map((a) => a.image) });
     if (!bubble) bubble = addMessage("bot", "");
     bubble.innerHTML = markdown(answer);
+    if (spoken) invoke("speak", { text: visibleText(answer) }).catch(() => {});
   } catch (e) {
     if (!bubble) bubble = addMessage("bot", "");
     bubble.textContent = String(e);
@@ -279,6 +281,43 @@ $("input").addEventListener("keydown", (e) => {
     submit($("input").value);
   }
 });
+
+// ---------- voice ----------
+
+/** The answer as shown: no hidden thinking or tool markup. */
+function visibleText(text) {
+  return stripThink(text).replace(/<tool_call>[\s\S]*?(<\/tool_call>|$)/g, "").trim();
+}
+
+let recording = false;
+$("mic").onclick = async () => {
+  if (busy) return;
+  const mic = $("mic");
+  if (!recording) {
+    try {
+      await invoke("voice_start");
+      recording = true;
+      mic.classList.add("recording");
+      mic.title = "Слушаю — нажмите ещё раз, когда договорите";
+      $("input").placeholder = "Слушаю…";
+    } catch (e) {
+      addMessage("bot", String(e)).classList.add("error");
+    }
+    return;
+  }
+  recording = false;
+  mic.classList.remove("recording");
+  mic.title = "Сказать голосом";
+  $("input").placeholder = "Распознаю речь…";
+  try {
+    const text = await invoke("voice_stop");
+    $("input").placeholder = "Напишите сообщение…";
+    await submit(text, true);
+  } catch (e) {
+    $("input").placeholder = "Напишите сообщение…";
+    addMessage("bot", String(e)).classList.add("error");
+  }
+};
 
 function autosize() {
   const input = $("input");
@@ -558,6 +597,7 @@ async function fillSettings() {
   form.elements.autostart.checked = !!s.autostart;
   form.elements.quit_on_close.checked = !!s.quit_on_close;
   form.elements.web_search.checked = !!s.web_search;
+  form.elements.silent_voice.checked = !!s.silent_voice;
   form.elements.show_pet.checked = !s.hide_pet;
   form.elements.mcp_servers.value = s.mcp_servers || "";
   showMemory();
@@ -604,6 +644,7 @@ form.addEventListener("submit", async (e) => {
     autostart: form.elements.autostart.checked,
     quit_on_close: form.elements.quit_on_close.checked,
     web_search: form.elements.web_search.checked,
+    silent_voice: form.elements.silent_voice.checked,
     hide_pet: !form.elements.show_pet.checked,
     last_model: "",
     downloads: [],

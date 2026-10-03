@@ -42,11 +42,23 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libclang-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libclang-dev libasound2-dev patchelf
+      # The voice program is separate (whisper.cpp and llama.cpp cannot share a binary):
+      # built first, then bundled as a sidecar with espeak-ng's pronunciation data.
+      - name: Voice program
+        shell: bash
+        run: |
+          cargo build --release -p homellm-voice
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          ext=""; [ "$RUNNER_OS" = "Windows" ] && ext=".exe"
+          mkdir -p crates/homellm-app/binaries crates/homellm-app/voice
+          cp "target/release/homellm-voice$ext" "crates/homellm-app/binaries/homellm-voice-$triple$ext"
+          data=$(ls -d target/release/build/espeak-rs-sys-*/out/share/espeak-ng-data | head -1)
+          cp -r "$data" crates/homellm-app/voice/
       - name: Build installers
         working-directory: crates/homellm-app
         shell: bash
-        run: npx --yes @tauri-apps/cli@2.12.0 build -- ${{ matrix.cargo_args }}
+        run: npx --yes @tauri-apps/cli@2.12.0 build --config tauri.voice.conf.json -- ${{ matrix.cargo_args }}
       - uses: softprops/action-gh-release@v2
         with:
           draft: true

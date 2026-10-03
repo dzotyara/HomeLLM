@@ -1,4 +1,6 @@
 /target
+/crates/homellm-app/binaries
+/crates/homellm-app/voice
 /models
 *.gguf
 *.gguf.part

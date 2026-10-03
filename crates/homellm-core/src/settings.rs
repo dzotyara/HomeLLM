@@ -53,6 +53,15 @@ pub struct Settings {
     /// The Client ID of the user's own app on developer.spotify.com (not a secret).
     #[serde(default)]
     pub spotify_client_id: String,
+    /// Speech recognition model (catalog id); empty = the default one.
+    #[serde(default)]
+    pub stt_model: String,
+    /// The voice answers are spoken with (catalog id); empty = the default one.
+    #[serde(default)]
+    pub tts_voice: String,
+    /// Answers to spoken questions stay silent (text only).
+    #[serde(default)]
+    pub silent_voice: bool,
 }
 
 static CURRENT: RwLock<Option<Settings>> = RwLock::new(None);

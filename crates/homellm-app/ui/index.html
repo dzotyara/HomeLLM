@@ -15,6 +15,7 @@
     </symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><g stroke="currentColor" stroke-width="1.8" fill="none"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></symbol>
@@ -46,9 +47,10 @@
       <div id="attachments"></div>
       <form id="composer">
         <textarea id="input" rows="1" placeholder="Напишите сообщение…"></textarea>
+        <button type="button" id="mic" class="icon-btn mic" title="Сказать голосом (или удерживайте Ctrl+Alt+Space в любой программе)"><svg class="ico"><use href="#i-mic"/></svg></button>
         <button type="submit" id="send" class="send" title="Отправить"><svg class="ico"><use href="#i-send"/></svg></button>
       </form>
-      <div class="hint-line">Enter — отправить, Shift+Enter — новая строка. Модели работают на вашем компьютере.</div>
+      <div class="hint-line">Enter — отправить, Shift+Enter — новая строка, Ctrl+Alt+Space (удерживать) — сказать голосом. Модели работают на вашем компьютере.</div>
     </main>
   </div>
 
@@ -76,6 +78,7 @@
       <label class="check"><input type="checkbox" name="autostart"> Запускать вместе с Windows (свёрнутым в трей)</label>
       <label class="check"><input type="checkbox" name="quit_on_close"> Закрытие окна — выход (иначе окно прячется в трей)</label>
       <label class="check"><input type="checkbox" name="show_pet"> Показывать питомца в углу экрана</label>
+      <label class="check"><input type="checkbox" name="silent_voice"> Не озвучивать ответы на голосовые вопросы (только текст)</label>
       <label class="check"><input type="checkbox" name="web_search"> Разрешить поиск в интернете (модель увидит результаты поиска DuckDuckGo; применится при следующем запуске модели)</label>
       <small class="hint">Alt+Space в любой программе — показать или спрятать HomeLLM.</small>
       <div class="memory-box"><b>Что я о вас помню</b><div id="memory-list" class="hint">Пока ничего. Скажите в чате «запомни, что…».</div></div>

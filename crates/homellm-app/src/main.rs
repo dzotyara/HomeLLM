@@ -22,7 +22,7 @@ use homellm_core::engine::Message;
 use homellm_core::engine::llama::LlamaEngine;
 use homellm_core::hardware::{self, gib};
 use homellm_core::settings::{self, Settings};
-use homellm_core::{catalog, download};
+use homellm_core::{catalog, download, voice};
 use serde_json::{Value, json};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -47,6 +47,10 @@ struct App {
     mcp: tokio::sync::RwLock<Vec<Arc<homellm_core::mcp::McpServer>>>,
     /// A model switch asked for in the chat: done once the answer is out.
     switch_to: Mutex<Option<String>>,
+    /// The microphone while the user speaks.
+    recorder: Mutex<Option<voice::Recorder>>,
+    /// The answer being read aloud: killed to stop it.
+    speaker: Mutex<Option<std::process::Child>>,
 }
 
 fn err_text(e: anyhow::Error) -> String {
@@ -925,13 +929,22 @@ fn show_main(app: &AppHandle) {
 
 /// The global hotkey: the quick-ask bar above all windows, like Spotlight.
 fn toggle_quick(app: &AppHandle) {
-    let window = match app.get_webview_window("quick") {
-        Some(window) => window,
-        None => match tauri::WebviewWindowBuilder::new(
-            app,
-            "quick",
-            tauri::WebviewUrl::App("quick.html".into()),
-        )
+    let Some(window) = quick_window(app) else {
+        return show_main(app);
+    };
+    if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
+        let _ = window.hide();
+        return;
+    }
+    show_quick(app, &window);
+}
+
+/// The quick-question bar, created hidden on first use.
+fn quick_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(window) = app.get_webview_window("quick") {
+        return Some(window);
+    }
+    tauri::WebviewWindowBuilder::new(app, "quick", tauri::WebviewUrl::App("quick.html".into()))
         .title("HomeLLM — быстрый вопрос")
         .inner_size(680.0, 90.0)
         .decorations(false)
@@ -942,15 +955,10 @@ fn toggle_quick(app: &AppHandle) {
         .resizable(false)
         .visible(false)
         .build()
-        {
-            Ok(window) => window,
-            Err(_) => return show_main(app),
-        },
-    };
-    if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
-        let _ = window.hide();
-        return;
-    }
+        .ok()
+}
+
+fn show_quick(app: &AppHandle, window: &tauri::WebviewWindow) {
     // Upper third of the screen, centred.
     if let Ok(Some(m)) = window.current_monitor() {
         let size = m.size().to_logical::<f64>(m.scale_factor());
@@ -962,6 +970,108 @@ fn toggle_quick(app: &AppHandle) {
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit_to("quick", "quick-open", ());
+}
+
+// ---------- voice ----------
+
+/// Starts recording; the first time, downloads what the voice needs and says so instead.
+fn start_listening(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<App>();
+    stop_speaking_now(&state);
+    if state.recorder.lock().unwrap().is_some() {
+        return Ok(()); // a held hotkey repeats
+    }
+    let missing = voice::missing();
+    if !missing.is_empty() {
+        for id in &missing {
+            let (app, id) = (app.clone(), id.to_string());
+            tauri::async_runtime::spawn(async move {
+                let _ = pull_model(&app, &id).await;
+            });
+        }
+        return Err(format!(
+            "Для голоса скачиваю модели ({}) — около 0,5 ГБ, прогресс в списке моделей. Попробуйте, когда скачаются.",
+            missing.join(", ")
+        ));
+    }
+    let recorder = voice::Recorder::start().map_err(err_text)?;
+    *state.recorder.lock().unwrap() = Some(recorder);
+    Ok(())
+}
+
+/// Stops recording and turns the speech into text.
+async fn finish_listening(app: &AppHandle) -> Result<String, String> {
+    let recorder = app
+        .state::<App>()
+        .recorder
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or("запись не идёт")?;
+    tauri::async_runtime::spawn_blocking(move || voice::transcribe(&recorder.stop()?))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err_text)
+}
+
+fn stop_speaking_now(state: &App) {
+    if let Some(mut child) = state.speaker.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+}
+
+/// Push-to-talk: hold Ctrl+Alt+Space, speak, release; the quick bar shows and asks.
+fn push_to_talk(app: &AppHandle, pressed: bool) {
+    if pressed {
+        if let Some(window) = quick_window(app) {
+            show_quick(app, &window);
+        }
+        let event = match start_listening(app) {
+            Ok(()) => json!({"state": "listening"}),
+            Err(e) => json!({"state": "error", "text": e}),
+        };
+        let _ = app.emit_to("quick", "voice", event);
+        return;
+    }
+    if app.state::<App>().recorder.lock().unwrap().is_none() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = app.emit_to("quick", "voice", json!({"state": "thinking"}));
+        let event = match finish_listening(&app).await {
+            Ok(text) => json!({"state": "heard", "text": text}),
+            Err(e) => json!({"state": "error", "text": e}),
+        };
+        let _ = app.emit_to("quick", "voice", event);
+    });
+}
+
+#[tauri::command]
+fn voice_start(app: AppHandle) -> Result<(), String> {
+    start_listening(&app)
+}
+
+#[tauri::command]
+async fn voice_stop(app: AppHandle) -> Result<String, String> {
+    finish_listening(&app).await
+}
+
+/// Reads an answer aloud, unless answers are set to stay silent.
+#[tauri::command]
+fn speak(state: State<'_, App>, text: String) -> Result<(), String> {
+    stop_speaking_now(&state);
+    if settings::get().silent_voice {
+        return Ok(());
+    }
+    let child = voice::speak(&text).map_err(err_text)?;
+    *state.speaker.lock().unwrap() = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_speaking(state: State<'_, App>) {
+    stop_speaking_now(&state);
 }
 
 /// The desktop pet: a small transparent window above the others, bottom right.
@@ -1138,8 +1248,12 @@ fn main() {
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
+                .with_handler(|app, shortcut, event| {
+                    use tauri_plugin_global_shortcut::{Code, Modifiers};
+                    let pressed = event.state == ShortcutState::Pressed;
+                    if shortcut.matches(Modifiers::CONTROL | Modifiers::ALT, Code::Space) {
+                        push_to_talk(app, pressed);
+                    } else if pressed {
                         toggle_quick(app);
                     }
                 })
@@ -1158,11 +1272,18 @@ fn main() {
         })
         .setup(|app| {
             build_tray(app)?;
+            if let Ok(dir) = app.path().resource_dir() {
+                voice::set_resource_dir(dir);
+            }
             {
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;
                 // Alt+Space may be taken (PowerToys Run): the app works without it.
                 if let Err(e) = app.global_shortcut().register("alt+space") {
                     eprintln!("hotkey Alt+Space is not available: {e}");
+                }
+                // Hold to speak.
+                if let Err(e) = app.global_shortcut().register("ctrl+alt+space") {
+                    eprintln!("hotkey Ctrl+Alt+Space is not available: {e}");
                 }
             }
             apply_autostart(app.handle(), settings::get().autostart);
@@ -1235,7 +1356,11 @@ fn main() {
             save_settings,
             spotify_connect,
             spotify_disconnect,
-            spotify_connected
+            spotify_connected,
+            voice_start,
+            voice_stop,
+            speak,
+            stop_speaking
         ])
         .run(tauri::generate_context!())
         .expect("failed to start HomeLLM");

@@ -12,6 +12,7 @@ pub mod screen;
 pub mod settings;
 pub mod spotify;
 pub mod tools;
+pub mod voice;
 
 use std::path::PathBuf;
 
