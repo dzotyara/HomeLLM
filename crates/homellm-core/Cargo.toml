@@ -37,9 +37,19 @@ sysinfo.workspace = true
 tokio.workspace = true
 ureq.workspace = true
 
-# «What plays now» from Windows' media overlay, whatever the player.
+# «What plays now» from Windows' media overlay; other programs' windows and their controls.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Foundation", "Media_Control"] }
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Media_Control",
+    # Other programs' windows: listing, focusing, UI Automation (tools/desktop.rs).
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 # llama-cpp-2 does not re-export the Vulkan switch: enable it on the sys crate directly.
 [target.'cfg(not(target_os = "macos"))'.dependencies]

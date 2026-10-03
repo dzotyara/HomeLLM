@@ -13,8 +13,9 @@ use serde_json::Value;
 use crate::engine::{Engine, Message, TokenSink};
 use crate::tools::{self, Risk};
 
-/// Tool calls per user message before we give up.
-const MAX_STEPS: usize = 5;
+/// Tool calls per user message before we give up: using another program takes a few
+/// (list_windows, read_window, click_element, check).
+const MAX_STEPS: usize = 8;
 /// Handled by the agent itself: the screenshot goes to the model as a picture.
 const LOOK_AT_SCREEN: &str = "look_at_screen";
 
